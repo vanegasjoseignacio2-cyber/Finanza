@@ -1,0 +1,144 @@
+@import "tailwindcss";
+
+/* ── Sistema de diseño ──────────────────────────────────────────────────────
+   Un solo tema: oscuro. Los tonos van de azul-noche (fondo) a verde-agua-azul
+   (acento). Nada de morados. Todos los pares texto/fondo superan 4.5:1.
+*/
+@theme {
+  --color-fondo: #050a14;
+  --color-fondo-alto: #08101f;
+  --color-superficie: #0c1526;
+  --color-superficie-alta: #111d33;
+  --color-borde: #1c2b45;
+  --color-borde-suave: #16233a;
+
+  --color-tinta: #e9eff8;
+  --color-tinta-2: #9db0ca;
+  --color-tinta-3: #6d7f99;
+
+  --color-verde: #34d399;
+  --color-verde-hondo: #0d9c74;
+  --color-agua: #22d3ee;
+  --color-azul: #60a5fa;
+  --color-azul-hondo: #2563eb;
+
+  --color-alerta: #fb7185;
+  --color-aviso: #fbbf24;
+
+  --font-display: var(--font-sora), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-xl2: 1.25rem;
+
+  --animate-aparecer: aparecer 0.5s ease-out both;
+  --animate-brillo: brillo 2.4s ease-in-out infinite;
+}
+
+@keyframes aparecer {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes brillo {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--color-fondo);
+  color: var(--color-tinta);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Halo de fondo fijo: da profundidad sin competir con el contenido. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(60rem 40rem at 12% -10%, rgba(52, 211, 153, 0.13), transparent 60%),
+    radial-gradient(52rem 36rem at 92% 4%, rgba(96, 165, 250, 0.12), transparent 62%),
+    radial-gradient(44rem 30rem at 50% 108%, rgba(34, 211, 238, 0.07), transparent 65%);
+}
+
+::selection {
+  background: rgba(52, 211, 153, 0.28);
+  color: #f4fbff;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-verde);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-borde) transparent;
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background: var(--color-borde);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+/* Los números de dinero no deben bailar al actualizarse. */
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Amplía el área táctil de un control pequeño hasta el mínimo de 44px sin
+   cambiar su aspecto: el pseudoelemento crece, el botón se ve igual. */
+@utility area-toque {
+  position: relative;
+  &::after {
+    content: "";
+    position: absolute;
+    inset: -4px;
+  }
+}
+
+@utility degradado-marca {
+  background-image: linear-gradient(120deg, var(--color-verde) 0%, var(--color-agua) 52%, var(--color-azul) 100%);
+}
+
+@utility texto-degradado {
+  background-image: linear-gradient(110deg, var(--color-verde) 0%, var(--color-agua) 48%, var(--color-azul) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility tarjeta {
+  background-color: color-mix(in oklab, var(--color-superficie) 88%, transparent);
+  border: 1px solid var(--color-borde-suave);
+  border-radius: var(--radius-xl2);
+  backdrop-filter: blur(10px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

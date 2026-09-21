@@ -1,0 +1,59 @@
+# Disparo diario del correo de recordatorios.
+#
+# Alternativa (o respaldo) al cron de Vercel: GitHub Actions es gratis en
+# repositorios públicos y da 2.000 minutos al mes en privados; esta tarea gasta
+# unos segundos al día.
+#
+# Antes de activarlo, crea dos secretos en el repositorio
+# (Settings → Secrets and variables → Actions):
+#   APP_URL      https://tu-app.vercel.app
+#   CRON_SECRET  el mismo valor que pusiste en las variables de la app
+name: Recordatorio diario
+
+on:
+  schedule:
+    # 12:00 UTC = 7:00 a. m. en Colombia. GitHub puede retrasarlo unos minutos.
+    - cron: "0 12 * * *"
+  workflow_dispatch:
+
+jobs:
+  avisar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Llamar al endpoint del recordatorio
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APP_URL}" ] || [ -z "${CRON_SECRET}" ]; then
+            echo "Faltan los secretos APP_URL o CRON_SECRET en el repositorio."
+            exit 1
+          fi
+
+          for intento in 1 2 3; do
+            codigo=$(curl --silent --show-error --max-time 60 \
+              --output respuesta.json --write-out '%{http_code}' \
+              --request POST "${APP_URL%/}/api/cron/recordatorios" \
+              --header "Authorization: Bearer ${CRON_SECRET}") || codigo="000"
+
+            echo "Intento ${intento}: HTTP ${codigo}"
+            cat respuesta.json || true
+            echo
+
+            if [ "${codigo}" = "200" ]; then
+              exit 0
+            fi
+
+            # 401 es configuración incorrecta: reintentar no arregla nada.
+            if [ "${codigo}" = "401" ]; then
+              echo "El secreto no coincide con el de la app."
+              exit 1
+            fi
+
+            sleep $((intento * 10))
+          done
+
+          echo "El recordatorio no se pudo disparar tras 3 intentos."
+          exit 1

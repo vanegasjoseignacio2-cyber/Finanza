@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": ".test-build",
+    "rootDir": ".",
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "types": ["node"]
+  },
+  "include": [
+    "src/lib/fechas.ts",
+    "src/lib/finanzas.ts",
+    "src/lib/dinero.ts",
+    "src/lib/categorias.ts",
+    "src/lib/types.ts",
+    "src/lib/email/plantilla.ts",
+    "pruebas/**/*.ts"
+  ]
+}

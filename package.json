@@ -1,0 +1,37 @@
+{
+  "name": "finanza",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "rm -rf .test-build && tsc -p tsconfig.test.json && node --test '.test-build/pruebas/*.test.js'",
+    "verificar": "npm run typecheck && npm run lint && npm run test"
+  },
+  "dependencies": {
+    "framer-motion": "^13.4.0",
+    "jose": "^6.2.12",
+    "lucide-react": "^1.47.0",
+    "mongodb": "^7.6.0",
+    "next": "16.3.5",
+    "nodemailer": "^10.0.10",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "resend": "^6.28.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/nodemailer": "^8.0.2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.5",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  },
+  "description": "Panel personal de finanzas con recordatorios diarios por correo."
+}
