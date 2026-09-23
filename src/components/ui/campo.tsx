@@ -135,7 +135,7 @@ export function Interruptor({
       <span
         aria-hidden="true"
         className={`relative h-6 w-11 shrink-0 rounded-full transition-colors duration-200 ${
-          activo ? "degradado-marca" : "bg-borde"
+          activo ? "bg-verde" : "bg-borde"
         }`}
       >
         <span

@@ -1,48 +1,30 @@
 import { crearMovimiento, listarMovimientos } from "@/lib/datos";
+import { datosMovimiento } from "@/lib/entradas";
 import { esMesValido } from "@/lib/fechas";
-import {
-  comoCategoria,
-  comoFecha,
-  comoMonto,
-  comoTexto,
-  comoTipo,
-  leerJson,
-  respuestaError,
-} from "@/lib/validacion";
+import { protegido } from "@/lib/seguridad";
 import type { TipoMovimiento } from "@/lib/types";
+import { leerJson } from "@/lib/validacion";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: Request) {
-  try {
-    const params = new URL(request.url).searchParams;
-    const mes = params.get("mes");
-    const tipo = params.get("tipo");
-    const categoria = params.get("categoria");
-    const movimientos = await listarMovimientos({
-      mes: esMesValido(mes) ? mes : undefined,
-      tipo: tipo === "gasto" || tipo === "ahorro" || tipo === "ingreso" ? (tipo as TipoMovimiento) : undefined,
-      categoria: categoria || undefined,
-    });
-    return Response.json({ movimientos });
-  } catch (error) {
-    return respuestaError(error);
-  }
-}
+const TIPOS = new Set(["gasto", "ingreso", "ahorro", "retiro", "transferencia"]);
 
-export async function POST(request: Request) {
-  try {
-    const cuerpo = await leerJson(request);
-    const tipo = comoTipo(cuerpo.tipo);
-    const movimiento = await crearMovimiento({
-      tipo,
-      categoria: comoCategoria(cuerpo.categoria, tipo),
-      monto: comoMonto(cuerpo.monto),
-      fecha: comoFecha(cuerpo.fecha),
-      nota: comoTexto(cuerpo.nota, "nota", 160, false),
-    });
-    return Response.json({ movimiento }, { status: 201 });
-  } catch (error) {
-    return respuestaError(error);
-  }
-}
+export const GET = protegido(async (request) => {
+  const p = new URL(request.url).searchParams;
+  const mes = p.get("mes");
+  const tipo = p.get("tipo");
+  const q = p.get("q")?.trim().slice(0, 60);
+  const movimientos = await listarMovimientos({
+    mes: esMesValido(mes) ? mes : undefined,
+    tipo: tipo && TIPOS.has(tipo) ? (tipo as TipoMovimiento) : undefined,
+    categoria: p.get("categoria") || undefined,
+    cuentaId: p.get("cuenta") || undefined,
+    q: q || undefined,
+  });
+  return Response.json({ movimientos });
+});
+
+export const POST = protegido(async (request) => {
+  const movimiento = await crearMovimiento(datosMovimiento(await leerJson(request)));
+  return Response.json({ movimiento }, { status: 201 });
+});

@@ -26,5 +26,6 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icono.svg|manifest.webmanifest).*)"],
+  // Recursos públicos: estáticos, íconos y el manifest (el navegador los pide sin sesión).
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icono.svg|iconos/|manifest.webmanifest).*)"],
 };

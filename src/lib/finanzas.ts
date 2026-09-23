@@ -1,16 +1,54 @@
-import { categoria, etiquetaCategoria } from "./categorias";
-import { diasEntre, hoyISO, proximoVencimiento } from "./fechas";
+/**
+ * Cálculos puros del dominio. Nada aquí toca la base ni la red: todo lo que el
+ * panel y el correo afirman sobre tu plata sale de estas funciones y se prueba
+ * desde `pruebas/`.
+ */
+import { CATALOGO_BASE, type Catalogo } from "./categorias";
+import { pesos } from "./dinero";
+import {
+  diasDelMes,
+  diasEntre,
+  mesCorto,
+  mesesEntre,
+  proximoVencimiento,
+  sumarMeses,
+} from "./fechas";
 import type {
   Ajustes,
+  Alerta,
+  Cuenta,
+  CuentaConSaldo,
+  Meta,
+  MetaCalculada,
   Movimiento,
+  Presupuesto,
+  PresupuestoCalculado,
   PuntoTendencia,
   Recordatorio,
   RecordatorioCalculado,
   Resumen,
   ResumenCategoria,
+  TipoMovimiento,
+  TramoSueldo,
 } from "./types";
 
-/** Agrupa los gastos del mes por categoría, de mayor a menor. */
+/* ─── Sueldo ─────────────────────────────────────────────────────────────── */
+
+/** Sueldo vigente en un mes: el último tramo que empezó en ese mes o antes. */
+export function sueldoPara(sueldos: TramoSueldo[], mes: string): number {
+  let vigente = 0;
+  let desdeVigente = "";
+  for (const tramo of sueldos) {
+    if (tramo.desde <= mes && tramo.desde >= desdeVigente) {
+      vigente = tramo.monto;
+      desdeVigente = tramo.desde;
+    }
+  }
+  return vigente;
+}
+
+/* ─── Categorías ─────────────────────────────────────────────────────────── */
+
 export function agruparPorCategoria(movimientos: Movimiento[]): ResumenCategoria[] {
   const totales = new Map<string, number>();
   for (const m of movimientos) {
@@ -19,263 +57,484 @@ export function agruparPorCategoria(movimientos: Movimiento[]): ResumenCategoria
   }
   const suma = [...totales.values()].reduce((a, b) => a + b, 0);
   return [...totales.entries()]
-    .map(([cat, total]) => ({
-      categoria: cat,
+    .map(([categoria, total]) => ({
+      categoria,
       total,
       porcentaje: suma ? Math.round((total / suma) * 100) : 0,
     }))
     .sort((a, b) => b.total - a.total);
 }
 
+/* ─── Pagos fijos (recordatorios) ────────────────────────────────────────── */
+
+/** Gasto vinculado que paga un recordatorio en un mes dado, si existe. */
+function pagoVinculado(
+  recordatorioId: string,
+  mes: string,
+  movimientos: Movimiento[],
+): Movimiento | null {
+  return (
+    movimientos.find(
+      (m) => m.tipo === "gasto" && m.recurrenteId === recordatorioId && m.mes === mes,
+    ) ?? null
+  );
+}
+
 /**
- * Resuelve el estado de cada recordatorio frente a la fecha de hoy.
- * Un recordatorio está pagado si se marcó a mano o si ya hay un gasto de esa
- * categoría en el mes en curso.
+ * Estado de cada pago fijo frente a hoy.
+ *
+ * Un pago cuenta como hecho SOLO si hay un gasto vinculado a él este mes o si
+ * se marcó a mano. Antes bastaba con cualquier gasto de la misma categoría, y
+ * un cambio de aceite dejaba "pagado" el seguro de la moto.
+ *
+ * Mientras no se pague, el vencimiento es el de este mes (y puede estar vencido).
+ * Una vez pagado, el siguiente vencimiento pasa al mes que viene.
  */
 export function calcularRecordatorios(
   recordatorios: Recordatorio[],
   movimientosDelMes: Movimiento[],
-  hoy = hoyISO(),
+  hoy: string,
 ): RecordatorioCalculado[] {
   const mes = hoy.slice(0, 7);
-  const diaHoy = Number(hoy.slice(8, 10));
-  const categoriasConGasto = new Set(
-    movimientosDelMes.filter((m) => m.tipo === "gasto").map((m) => m.categoria),
-  );
 
   return recordatorios
     .map((r) => {
-      const pagado =
-        r.pagados.includes(mes) ||
-        (r.categoria !== "" && categoriasConGasto.has(r.categoria));
-      const vencimiento = proximoVencimiento(r.dia, hoy);
+      const pago = pagoVinculado(r.id, mes, movimientosDelMes);
+      const pagado = pago !== null || r.pagados.includes(mes);
+      const vencimientoEsteMes = `${mes}-${String(Math.min(r.dia, diasDelMes(mes))).padStart(2, "0")}`;
+      const vencimiento = pagado
+        ? proximoVencimiento(r.dia, `${sumarMeses(mes, 1)}-01`)
+        : vencimientoEsteMes;
+      const diasFaltantes = diasEntre(hoy, vencimiento);
       return {
         ...r,
         pagado,
+        pagoMovimientoId: pago?.id ?? null,
+        montoPagado: pago?.monto ?? null,
         vencimiento,
-        diasFaltantes: diasEntre(hoy, vencimiento),
-        vencido: !pagado && diaHoy > r.dia,
+        diasFaltantes,
+        vencido: !pagado && r.activo && diasFaltantes < 0,
       };
     })
     .sort((a, b) => {
+      if (a.activo !== b.activo) return a.activo ? -1 : 1;
       if (a.pagado !== b.pagado) return a.pagado ? 1 : -1;
       return a.diasFaltantes - b.diasFaltantes;
     });
 }
 
-/** Recordatorios que merecen un correo hoy: vencen dentro del margen de aviso. */
+/** Pagos que merecen un correo: activos, sin pagar y dentro del margen (o vencidos). */
 export function recordatoriosParaAvisar(
   calculados: RecordatorioCalculado[],
   diasAviso: number,
 ): RecordatorioCalculado[] {
-  return calculados.filter(
-    (r) => r.activo && !r.pagado && r.diasFaltantes <= diasAviso,
+  return calculados.filter((r) => r.activo && !r.pagado && r.diasFaltantes <= diasAviso);
+}
+
+/** Pagos fijos de un mes que aún no se han pagado en ese mes. */
+export function fijosPendientesDelMes(
+  recordatorios: Recordatorio[],
+  mes: string,
+  movimientosDelMes: Movimiento[],
+): Recordatorio[] {
+  return recordatorios.filter(
+    (r) =>
+      r.activo &&
+      !r.pagados.includes(mes) &&
+      pagoVinculado(r.id, mes, movimientosDelMes) === null,
   );
 }
 
-interface DatosConsejos {
-  ingresoTotal: number;
-  gastado: number;
-  disponible: number;
-  ahorradoMes: number;
-  ahorroTotal: number;
-  metaAhorro: number;
-  metaNombre: string;
-  categorias: ResumenCategoria[];
-  promedioAhorroMensual: number;
-  mesesRestantes: number | null;
-  cuotaSugerida?: number | null;
-  mesesHastaLimite?: number | null;
-  tendencia: PuntoTendencia[];
+/* ─── Metas ──────────────────────────────────────────────────────────────── */
+
+/** Suma histórica agrupada, tal como sale de la base. */
+export interface SumaAgrupada {
+  tipo: TipoMovimiento;
+  cuentaId: string | null;
+  cuentaDestinoId: string | null;
+  metaId: string | null;
+  total: number;
+  primerMes: string;
+}
+
+export function calcularMetas(
+  metas: Meta[],
+  sumas: SumaAgrupada[],
+  movimientosDelMes: Movimiento[],
+  hoy: string,
+): MetaCalculada[] {
+  const mesReal = hoy.slice(0, 7);
+  const principal = metas.find((m) => m.principal) ?? metas[0];
+  // Los aportes antiguos sin meta se atribuyen a la meta principal.
+  const idDe = (metaId: string | null) => metaId ?? principal?.id ?? "";
+
+  return metas.map((meta) => {
+    let ahorrado = 0;
+    let primerMes: string | null = null;
+    for (const s of sumas) {
+      if (idDe(s.metaId) !== meta.id) continue;
+      if (s.tipo === "ahorro") {
+        ahorrado += s.total;
+        if (!primerMes || s.primerMes < primerMes) primerMes = s.primerMes;
+      }
+      if (s.tipo === "retiro") ahorrado -= s.total;
+    }
+    ahorrado = Math.max(0, ahorrado);
+
+    const aportadoEsteMes = movimientosDelMes
+      .filter((m) => idDe(m.metaId) === meta.id)
+      .reduce((s, m) => s + (m.tipo === "ahorro" ? m.monto : m.tipo === "retiro" ? -m.monto : 0), 0);
+
+    // El ritmo se mide sobre TODOS los meses desde el primer aporte, incluidos
+    // los meses sin aporte. Dividir solo entre meses con aporte infla el ritmo.
+    const mesesTranscurridos = primerMes ? Math.max(1, mesesEntre(primerMes, mesReal)) : 0;
+    const promedioMensual = mesesTranscurridos ? ahorrado / mesesTranscurridos : 0;
+
+    const falta = Math.max(0, meta.monto - ahorrado);
+    const mesesRestantes =
+      meta.monto <= 0
+        ? null
+        : falta === 0
+          ? 0
+          : promedioMensual > 0
+            ? Math.ceil(falta / promedioMensual)
+            : null;
+
+    let mesesHastaLimite: number | null = null;
+    let cuotaSugerida: number | null = null;
+    if (meta.fechaLimite && falta > 0) {
+      const dias = diasEntre(hoy, meta.fechaLimite);
+      mesesHastaLimite = dias > 0 ? Math.max(1, Math.round(dias / 30.44)) : 0;
+      // La cuota se calcula sobre lo que faltaba al empezar el mes, para que un
+      // aporte hecho hoy no la haga bajar y luego se descuente dos veces.
+      const faltaAlEmpezarMes = falta + Math.max(0, aportadoEsteMes);
+      cuotaSugerida =
+        mesesHastaLimite > 0 ? Math.ceil(faltaAlEmpezarMes / mesesHastaLimite) : falta;
+    }
+
+    return {
+      ...meta,
+      ahorrado,
+      progreso: meta.monto > 0 ? Math.min(100, Math.round((ahorrado / meta.monto) * 100)) : 0,
+      aportadoEsteMes,
+      promedioMensual,
+      mesesRestantes,
+      mesesHastaLimite,
+      cuotaSugerida,
+    };
+  });
+}
+
+/** Lo que falta apartar este mes para ir al día con las metas que tienen fecha. */
+export function cuotaPendienteDelMes(metas: MetaCalculada[]): number {
+  return metas
+    .filter((m) => !m.archivada && m.cuotaSugerida !== null)
+    .reduce((s, m) => s + Math.max(0, (m.cuotaSugerida ?? 0) - Math.max(0, m.aportadoEsteMes)), 0);
+}
+
+/* ─── Cuentas ────────────────────────────────────────────────────────────── */
+
+export function cuentaPrincipal(cuentas: Cuenta[]): Cuenta | undefined {
+  return (
+    cuentas.find((c) => !c.archivada && c.tipo === "corriente") ??
+    cuentas.find((c) => !c.archivada) ??
+    cuentas[0]
+  );
 }
 
 /**
- * Consejos derivados de los números reales del mes. Se ordenan de más urgente
- * a más general y se recortan para que el panel no se vuelva un muro de texto.
+ * Saldo de cada cuenta = saldo inicial + todo lo registrado que la toca.
+ * Los movimientos antiguos sin cuenta pertenecen a la cuenta principal.
  */
-export function generarConsejos(d: DatosConsejos): string[] {
-  const consejos: string[] = [];
-  const pct = (parte: number, total: number) =>
-    total ? Math.round((parte / total) * 100) : 0;
+export function calcularSaldos(cuentas: Cuenta[], sumas: SumaAgrupada[]): CuentaConSaldo[] {
+  const principalId = cuentaPrincipal(cuentas)?.id ?? "";
+  const saldo = new Map(cuentas.map((c) => [c.id, c.saldoInicial]));
+  const mover = (id: string | null, delta: number) => {
+    const clave = id ?? principalId;
+    if (saldo.has(clave)) saldo.set(clave, (saldo.get(clave) ?? 0) + delta);
+  };
 
-  if (d.disponible < 0) {
-    consejos.push(
-      `Este mes gastaste ${pct(Math.abs(d.disponible), d.ingresoTotal)}% por encima de tu ingreso. Antes de aportar al ahorro, revisa qué categoría se disparó y ponle un tope para el mes que viene.`,
-    );
-  }
-
-  const top = d.categorias[0];
-  if (top && d.ingresoTotal > 0) {
-    const parte = pct(top.total, d.ingresoTotal);
-    if (parte >= 35) {
-      consejos.push(
-        `${etiquetaCategoria(top.categoria)} se lleva el ${parte}% de tu ingreso. Es tu palanca más grande: bajarla un 10% libera más plata que recortar tres categorías pequeñas.`,
-      );
+  for (const s of sumas) {
+    switch (s.tipo) {
+      case "gasto":
+        mover(s.cuentaId, -s.total);
+        break;
+      case "ingreso":
+        mover(s.cuentaId, s.total);
+        break;
+      case "transferencia":
+        mover(s.cuentaId, -s.total);
+        if (s.cuentaDestinoId) mover(s.cuentaDestinoId, s.total);
+        break;
+      case "ahorro":
+        mover(s.cuentaId, -s.total);
+        if (s.cuentaDestinoId) mover(s.cuentaDestinoId, s.total);
+        break;
+      case "retiro":
+        mover(s.cuentaId, s.total);
+        if (s.cuentaDestinoId) mover(s.cuentaDestinoId, -s.total);
+        break;
     }
   }
-
-  const hormiga = d.categorias
-    .filter((c) => ["almuerzo", "ocio", "suscripciones", "otros"].includes(c.categoria))
-    .reduce((s, c) => s + c.total, 0);
-  if (hormiga > 0 && d.ingresoTotal > 0 && pct(hormiga, d.ingresoTotal) >= 15) {
-    consejos.push(
-      `Los gastos hormiga (comida fuera, ocio, suscripciones, otros) suman ${pct(hormiga, d.ingresoTotal)}% de tu ingreso. Son los más fáciles de recortar sin cambiar tu vida.`,
-    );
-  }
-
-  if (d.ahorradoMes === 0 && d.disponible > 0) {
-    consejos.push(
-      `Te queda disponible este mes y aún no registras aporte al ahorro. Aparta primero y gasta después: la meta no debería depender de lo que sobre al final.`,
-    );
-  }
-
-  if (d.cuotaSugerida && d.mesesHastaLimite) {
-    const alcanza = d.promedioAhorroMensual >= d.cuotaSugerida;
-    consejos.push(
-      alcanza
-        ? `Para ${d.metaNombre} necesitas ${d.cuotaSugerida.toLocaleString("es-CO")} al mes y vas apartando ${Math.round(d.promedioAhorroMensual).toLocaleString("es-CO")}: a este ritmo llegas a tiempo.`
-        : `Para ${d.metaNombre} en la fecha que pusiste harían falta ${d.cuotaSugerida.toLocaleString("es-CO")} al mes, y vas en ${Math.round(d.promedioAhorroMensual).toLocaleString("es-CO")}. O subes el aporte o mueves la fecha.`,
-    );
-  } else if (d.metaAhorro > 0) {
-    const falta = Math.max(0, d.metaAhorro - d.ahorroTotal);
-    if (falta === 0) {
-      consejos.push(
-        `Ya cubriste la meta de ${d.metaNombre}. Define la siguiente antes de que el excedente se diluya en gastos del día a día.`,
-      );
-    } else if (d.mesesRestantes !== null) {
-      consejos.push(
-        `A tu ritmo actual (${Math.round(d.promedioAhorroMensual).toLocaleString("es-CO")} al mes) llegas a ${d.metaNombre} en unos ${d.mesesRestantes} ${d.mesesRestantes === 1 ? "mes" : "meses"}. Subir el aporte un 15% te adelanta varios meses.`,
-      );
-    } else {
-      consejos.push(
-        `Para ${d.metaNombre} te faltan ${falta.toLocaleString("es-CO")}. Ponle fecha límite y divide el faltante entre los meses que quedan: eso te da una cuota mensual concreta.`,
-      );
-    }
-  }
-
-  const meses = d.tendencia.filter((p) => p.gastado > 0);
-  if (meses.length >= 3) {
-    const previos = meses.slice(0, -1);
-    const promedio = previos.reduce((s, p) => s + p.gastado, 0) / previos.length;
-    const actual = meses[meses.length - 1].gastado;
-    if (promedio > 0 && actual > promedio * 1.2) {
-      consejos.push(
-        `Llevas ${pct(actual - promedio, promedio)}% más de gasto que tu promedio de los últimos meses. Vale la pena mirar qué cambió antes de que se vuelva el nuevo normal.`,
-      );
-    }
-  }
-
-  consejos.push(
-    "Antes de una compra grande compara al menos dos vendedores o dos fechas: en compras de varios millones, un 5% de diferencia ya son cientos de miles de pesos.",
-  );
-
-  return consejos.slice(0, 4);
+  return cuentas.map((c) => ({ ...c, saldo: saldo.get(c.id) ?? c.saldoInicial }));
 }
 
-export { categoria };
+/* ─── Presupuestos ───────────────────────────────────────────────────────── */
+
+export const UMBRAL_CERCA = 85;
+
+export function calcularPresupuestos(
+  presupuestos: Presupuesto[],
+  movimientosDelMes: Movimiento[],
+): PresupuestoCalculado[] {
+  return presupuestos
+    .filter((p) => p.tope > 0)
+    .map((p) => {
+      const gastado = movimientosDelMes
+        .filter((m) => m.tipo === "gasto" && m.categoria === p.categoria)
+        .reduce((s, m) => s + m.monto, 0);
+      const porcentaje = Math.round((gastado / p.tope) * 100);
+      return {
+        ...p,
+        gastado,
+        porcentaje,
+        estado:
+          porcentaje >= 100 ? ("excedido" as const) : porcentaje >= UMBRAL_CERCA ? ("cerca" as const) : ("ok" as const),
+      };
+    })
+    .sort((a, b) => b.porcentaje - a.porcentaje);
+}
+
+/* ─── Tendencia ──────────────────────────────────────────────────────────── */
+
+export interface FilaMensual {
+  mes: string;
+  tipo: TipoMovimiento;
+  categoria: string;
+  total: number;
+}
+
+export function calcularTendencia(
+  filas: FilaMensual[],
+  hasta: string,
+  sueldos: TramoSueldo[],
+  meses = 6,
+): PuntoTendencia[] {
+  const puntos: PuntoTendencia[] = [];
+  for (let i = meses - 1; i >= 0; i--) {
+    const mes = sumarMeses(hasta, -i);
+    const delMes = filas.filter((f) => f.mes === mes);
+    const suma = (tipo: TipoMovimiento) =>
+      delMes.filter((f) => f.tipo === tipo).reduce((s, f) => s + f.total, 0);
+    const conSueldo = delMes.some((f) => f.tipo === "ingreso" && f.categoria === "sueldo");
+    puntos.push({
+      mes,
+      etiqueta: mesCorto(mes),
+      ingreso: suma("ingreso") + (conSueldo ? 0 : sueldoPara(sueldos, mes)),
+      gastado: suma("gasto"),
+      ahorrado: suma("ahorro") - suma("retiro"),
+    });
+  }
+  return puntos;
+}
+
+/* ─── Resumen ────────────────────────────────────────────────────────────── */
 
 export interface EntradaResumen {
   mes: string;
   hoy: string;
   ajustes: Ajustes;
-  /** Movimientos del mes que se está mirando. */
-  movimientos: Movimiento[];
-  /** Movimientos del mes real: los recordatorios siempre se juzgan contra hoy. */
+  /** Movimientos del mes que se consulta. */
+  movimientosMes: Movimiento[];
+  /** Movimientos del mes en curso: los pagos fijos se juzgan contra hoy. */
   movimientosMesReal: Movimiento[];
   recordatorios: Recordatorio[];
-  /** Ahorro acumulado de todos los meses. */
-  ahorroTotal: number;
-  /** Cuántos meses distintos tuvieron aportes al ahorro. */
-  mesesConAhorro: number;
-  tendencia: PuntoTendencia[];
+  metas: Meta[];
+  cuentas: Cuenta[];
+  presupuestos: Presupuesto[];
+  sumas: SumaAgrupada[];
+  serie: FilaMensual[];
+  catalogo?: Catalogo;
+}
+
+export function componerResumen(e: EntradaResumen): Resumen {
+  const catalogo = e.catalogo ?? CATALOGO_BASE;
+  const mesReal = e.hoy.slice(0, 7);
+  const momento = e.mes < mesReal ? "pasado" : e.mes > mesReal ? "futuro" : "actual";
+  const movs = e.movimientosMes;
+  const suma = (tipo: TipoMovimiento) =>
+    movs.filter((m) => m.tipo === tipo).reduce((s, m) => s + m.monto, 0);
+
+  // Ingreso: lo registrado, más el sueldo esperado mientras no se registre.
+  const sueldoEsperado = sueldoPara(e.ajustes.sueldos, e.mes);
+  const sueldoRegistrado = movs.some((m) => m.tipo === "ingreso" && m.categoria === "sueldo");
+  const ingresosRegistrados = suma("ingreso");
+  const ingresoTotal = ingresosRegistrados + (sueldoRegistrado ? 0 : sueldoEsperado);
+
+  const gastado = suma("gasto");
+  const ahorroNeto = suma("ahorro") - suma("retiro");
+
+  // Pagos fijos que todavía salen este mes. En un mes cerrado ya no aplica.
+  // Si se consulta el mes en curso, ambas listas son el mismo mes: se usa una sola
+  // para que nunca puedan contradecirse.
+  const movimientosDeHoy = momento === "actual" ? movs : e.movimientosMesReal;
+  const recordatorios = calcularRecordatorios(e.recordatorios, movimientosDeHoy, e.hoy);
+  let fijosPendientesLista: RecordatorioCalculado[] = [];
+  if (momento === "actual") {
+    fijosPendientesLista = recordatorios.filter((r) => r.activo && !r.pagado);
+  } else if (momento === "futuro") {
+    const pendientes = new Set(
+      fijosPendientesDelMes(e.recordatorios, e.mes, movs).map((r) => r.id),
+    );
+    fijosPendientesLista = recordatorios.filter((r) => pendientes.has(r.id));
+  }
+  const fijosPendientes = fijosPendientesLista.reduce((s, r) => s + r.montoEstimado, 0);
+  const fijosSinMonto = fijosPendientesLista.filter((r) => r.montoEstimado <= 0).length;
+
+  const libre = ingresoTotal - gastado - ahorroNeto - fijosPendientes;
+
+  const diasRestantes =
+    momento === "actual"
+      ? diasDelMes(e.mes) - Number(e.hoy.slice(8, 10)) + 1
+      : momento === "futuro"
+        ? diasDelMes(e.mes)
+        : null;
+  const porDia = diasRestantes ? Math.max(0, Math.floor(libre / diasRestantes)) : null;
+
+  const metas = calcularMetas(e.metas, e.sumas, movs, e.hoy);
+  const cuotaMetasPendiente = momento === "actual" ? cuotaPendienteDelMes(metas) : 0;
+  const porDiaTrasMetas =
+    diasRestantes && cuotaMetasPendiente > 0
+      ? Math.max(0, Math.floor((libre - cuotaMetasPendiente) / diasRestantes))
+      : null;
+
+  const presupuestos = calcularPresupuestos(e.presupuestos, movs);
+
+  const resumen: Resumen = {
+    mes: e.mes,
+    hoy: e.hoy,
+    momento,
+    sueldoEsperado,
+    sueldoRegistrado,
+    ingresosRegistrados,
+    ingresoTotal,
+    gastado,
+    ahorroNeto,
+    fijosPendientes,
+    fijosPendientesLista,
+    fijosSinMonto,
+    libre,
+    diasRestantes,
+    porDia,
+    cuotaMetasPendiente,
+    porDiaTrasMetas,
+    categorias: agruparPorCategoria(movs),
+    presupuestos,
+    tendencia: calcularTendencia(e.serie, e.mes, e.ajustes.sueldos),
+    movimientos: movs,
+    recordatorios,
+    metas: metas.filter((m) => !m.archivada),
+    cuentas: calcularSaldos(e.cuentas, e.sumas).filter((c) => !c.archivada),
+    alertas: [],
+    ajustes: e.ajustes,
+  };
+  resumen.alertas = generarAlertas(resumen, catalogo);
+  return resumen;
+}
+
+/* ─── Alertas ────────────────────────────────────────────────────────────── */
+
+function lista(nombres: string[]): string {
+  if (nombres.length <= 1) return nombres.join("");
+  return `${nombres.slice(0, -1).join(", ")} y ${nombres.at(-1)}`;
 }
 
 /**
- * Convierte los datos crudos en el resumen que consume el panel.
- * Es una función pura: toda la aritmética del panel se prueba desde aquí.
+ * Solo lo que pide una decisión, de más a menos urgente. Nada de consejos de
+ * relleno: si no hay nada que decir, la lista queda vacía.
  */
-export function componerResumen(entrada: EntradaResumen): Resumen {
-  const { ajustes, movimientos } = entrada;
+export function generarAlertas(r: Resumen, catalogo: Catalogo = CATALOGO_BASE): Alerta[] {
+  const alertas: Alerta[] = [];
+  const enCurso = r.momento === "actual";
 
-  const suma = (tipo: Movimiento["tipo"]) =>
-    movimientos.filter((m) => m.tipo === tipo).reduce((s, m) => s + m.monto, 0);
-
-  const gastado = suma("gasto");
-  const ahorradoMes = suma("ahorro");
-  const ingresosExtra = suma("ingreso");
-
-  const ingresoTotal = ajustes.ingresoMensual + ingresosExtra;
-  // El ahorro sale del mismo bolsillo: se descuenta de lo disponible.
-  const disponible = ingresoTotal - gastado - ahorradoMes;
-
-  const categorias = agruparPorCategoria(movimientos);
-
-  const promedioAhorroMensual =
-    entrada.mesesConAhorro > 0 ? entrada.ahorroTotal / entrada.mesesConAhorro : 0;
-  const falta = Math.max(0, ajustes.metaAhorro - entrada.ahorroTotal);
-  const mesesRestantes =
-    falta > 0
-      ? promedioAhorroMensual > 0
-        ? Math.ceil(falta / promedioAhorroMensual)
-        : null
-      : ajustes.metaAhorro > 0
-        ? 0
-        : null;
-
-  // Si hay fecha límite, se traduce en una cuota mensual concreta.
-  let mesesHastaLimite: number | null = null;
-  let cuotaSugerida: number | null = null;
-  if (ajustes.metaFechaLimite && falta > 0) {
-    const dias = diasEntre(entrada.hoy, ajustes.metaFechaLimite);
-    mesesHastaLimite = dias > 0 ? Math.max(1, Math.round(dias / 30.44)) : 0;
-    cuotaSugerida = mesesHastaLimite > 0 ? Math.ceil(falta / mesesHastaLimite) : falta;
+  if (enCurso && r.libre < 0) {
+    alertas.push({
+      tono: "riesgo",
+      clave: "libre",
+      texto:
+        r.fijosPendientes > 0
+          ? `Contando los ${pesos(r.fijosPendientes)} en pagos fijos que faltan, este mes te faltan ${pesos(Math.abs(r.libre))}.`
+          : `Este mes ya gastaste ${pesos(Math.abs(r.libre))} más de lo que entra.`,
+    });
   }
 
-  const progresoMeta = ajustes.metaAhorro
-    ? Math.min(100, Math.round((entrada.ahorroTotal / ajustes.metaAhorro) * 100))
-    : 0;
+  if (enCurso) {
+    const vencidos = r.recordatorios.filter((x) => x.vencido);
+    if (vencidos.length > 0) {
+      alertas.push({
+        tono: "riesgo",
+        clave: "vencidos",
+        texto:
+          vencidos.length === 1
+            ? `${vencidos[0].titulo} venció hace ${Math.abs(vencidos[0].diasFaltantes)} ${Math.abs(vencidos[0].diasFaltantes) === 1 ? "día" : "días"} y no está registrado como pagado.`
+            : `Tienes ${vencidos.length} pagos vencidos sin registrar: ${lista(vencidos.map((v) => v.titulo))}.`,
+      });
+    }
+  }
 
-  const consejos = generarConsejos({
-    ingresoTotal,
-    gastado,
-    disponible,
-    ahorradoMes,
-    ahorroTotal: entrada.ahorroTotal,
-    metaAhorro: ajustes.metaAhorro,
-    metaNombre: ajustes.metaNombre,
-    categorias,
-    promedioAhorroMensual,
-    mesesRestantes,
-    cuotaSugerida,
-    mesesHastaLimite,
-    tendencia: entrada.tendencia,
-  });
+  const excedidos = r.presupuestos.filter((p) => p.estado === "excedido");
+  if (excedidos.length === 1) {
+    const p = excedidos[0];
+    alertas.push({
+      tono: "riesgo",
+      clave: "presupuesto",
+      texto: `Te pasaste del tope en ${catalogo.etiqueta(p.categoria)}: ${pesos(p.gastado)} de ${pesos(p.tope)}.`,
+    });
+  } else if (excedidos.length > 1) {
+    alertas.push({
+      tono: "riesgo",
+      clave: "presupuesto",
+      texto: `Te pasaste del tope en ${lista(excedidos.map((p) => catalogo.etiqueta(p.categoria)))}.`,
+    });
+  }
 
-  return {
-    mes: entrada.mes,
-    ingresoBase: ajustes.ingresoMensual,
-    ingresosExtra,
-    ingresoTotal,
-    gastado,
-    ahorradoMes,
-    disponible,
-    ahorroTotal: entrada.ahorroTotal,
-    metaAhorro: ajustes.metaAhorro,
-    metaNombre: ajustes.metaNombre,
-    progresoMeta,
-    mesesRestantes,
-    mesesHastaLimite,
-    cuotaSugerida,
-    promedioAhorroMensual,
-    categorias,
-    tendencia: entrada.tendencia,
-    movimientos,
-    recordatorios: calcularRecordatorios(
-      entrada.recordatorios,
-      entrada.movimientosMesReal,
-      entrada.hoy,
-    ),
-    ajustes,
-    consejos,
-  };
+  const cerca = r.presupuestos.filter((p) => p.estado === "cerca");
+  if (cerca.length > 0) {
+    alertas.push({
+      tono: "aviso",
+      clave: "presupuesto",
+      texto:
+        cerca.length === 1
+          ? `${catalogo.etiqueta(cerca[0].categoria)} va en ${cerca[0].porcentaje}% del tope y quedan ${r.diasRestantes ?? 0} días.`
+          : `${lista(cerca.map((p) => catalogo.etiqueta(p.categoria)))} ya pasan del ${UMBRAL_CERCA}% del tope.`,
+    });
+  }
+
+  for (const meta of r.metas) {
+    if (meta.cuotaSugerida && meta.mesesHastaLimite && meta.promedioMensual < meta.cuotaSugerida) {
+      alertas.push({
+        tono: "aviso",
+        clave: "meta",
+        texto: `Para ${meta.nombre} a tiempo harían falta ${pesos(meta.cuotaSugerida)} al mes y tu ritmo es de ${pesos(meta.promedioMensual)}. Sube el aporte o mueve la fecha.`,
+      });
+    }
+  }
+
+  if (r.fijosSinMonto > 0) {
+    alertas.push({
+      tono: "info",
+      clave: "sin-monto",
+      texto: `${r.fijosSinMonto} ${r.fijosSinMonto === 1 ? "pago fijo no tiene" : "pagos fijos no tienen"} monto estimado, así que lo libre no los descuenta.`,
+    });
+  }
+
+  if (enCurso && !r.sueldoRegistrado && r.sueldoEsperado > 0) {
+    alertas.push({
+      tono: "info",
+      clave: "sueldo",
+      texto: `El sueldo de este mes todavía no está registrado; el cálculo asume que llegan ${pesos(r.sueldoEsperado)}.`,
+    });
+  }
+
+  return alertas;
 }

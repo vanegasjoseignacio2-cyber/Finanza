@@ -1,8 +1,10 @@
-import { esCategoriaValida } from "./categorias";
-import { esFechaValida } from "./fechas";
-import type { TipoMovimiento } from "./types";
+import { esFechaValida, esMesValido } from "./fechas";
+import type { TipoCuenta, TipoMovimiento } from "./types";
 
 export class ErrorValidacion extends Error {}
+
+/** Lo pedido no existe (o ya no existe): responde 404. */
+export class ErrorNoEncontrado extends Error {}
 
 export function comoTexto(valor: unknown, campo: string, max = 120, obligatorio = true): string {
   const texto = typeof valor === "string" ? valor.trim() : "";
@@ -37,23 +39,40 @@ export function comoDia(valor: unknown): number {
   return dia;
 }
 
+const TIPOS: TipoMovimiento[] = ["gasto", "ingreso", "ahorro", "retiro", "transferencia"];
+
 export function comoTipo(valor: unknown): TipoMovimiento {
-  if (valor === "gasto" || valor === "ahorro" || valor === "ingreso") return valor;
+  if (TIPOS.includes(valor as TipoMovimiento)) return valor as TipoMovimiento;
   throw new ErrorValidacion("Tipo de movimiento inválido.");
+}
+
+export function comoTipoCuenta(valor: unknown): TipoCuenta {
+  if (valor === "corriente" || valor === "efectivo" || valor === "ahorro") return valor;
+  throw new ErrorValidacion("Tipo de cuenta inválido.");
+}
+
+/** Identificador opcional (cadena no vacía) o null. */
+export function comoIdOpcional(valor: unknown): string | null {
+  if (valor === null || valor === undefined || valor === "") return null;
+  if (typeof valor !== "string" || valor.length > 64) {
+    throw new ErrorValidacion("Identificador inválido.");
+  }
+  return valor;
+}
+
+export function comoMes(valor: unknown): string {
+  if (!esMesValido(valor)) throw new ErrorValidacion("El mes no es válido (formato AAAA-MM).");
+  return valor;
+}
+
+export function comoFechaOpcional(valor: unknown): string | null {
+  if (valor === null || valor === undefined || valor === "") return null;
+  return comoFecha(valor);
 }
 
 export function comoFecha(valor: unknown): string {
   if (!esFechaValida(valor)) {
     throw new ErrorValidacion("La fecha no es válida (formato AAAA-MM-DD).");
-  }
-  return valor;
-}
-
-export function comoCategoria(valor: unknown, tipo: TipoMovimiento): string {
-  if (tipo === "ahorro") return "ahorro";
-  if (tipo === "ingreso") return "ingreso-extra";
-  if (!esCategoriaValida(valor)) {
-    throw new ErrorValidacion("Selecciona una categoría válida.");
   }
   return valor;
 }
@@ -94,6 +113,9 @@ export async function leerJson(request: Request): Promise<Record<string, unknown
 export function respuestaError(error: unknown): Response {
   if (error instanceof ErrorValidacion) {
     return Response.json({ error: error.message }, { status: 400 });
+  }
+  if (error instanceof ErrorNoEncontrado) {
+    return Response.json({ error: error.message }, { status: 404 });
   }
   console.error("Error no controlado en la API:", error);
   const mensaje =

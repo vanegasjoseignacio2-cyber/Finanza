@@ -1,7 +1,6 @@
-import { etiquetaCategoria } from "@/lib/categorias";
-import { listarMovimientos } from "@/lib/datos";
+import { listarMovimientos, listarCuentas, listarMetas, obtenerCatalogo } from "@/lib/datos";
 import { hoyISO } from "@/lib/fechas";
-import { respuestaError } from "@/lib/validacion";
+import { protegido } from "@/lib/seguridad";
 
 export const dynamic = "force-dynamic";
 
@@ -12,32 +11,38 @@ function celda(valor: string | number): string {
   return `"${texto.replace(/"/g, '""')}"`;
 }
 
-export async function GET() {
-  try {
-    const movimientos = await listarMovimientos({ limite: 10_000 });
-    const filas = [
-      ["fecha", "tipo", "categoria", "monto", "nota"].map(celda).join(","),
-      ...movimientos.map((m) =>
-        [
-          m.fecha,
-          m.tipo,
-          etiquetaCategoria(m.categoria),
-          m.monto,
-          m.nota,
-        ]
-          .map(celda)
-          .join(","),
-      ),
-    ];
-    // El BOM hace que Excel abra los acentos correctamente.
-    const csv = `﻿${filas.join("\r\n")}`;
-    return new Response(csv, {
-      headers: {
-        "content-type": "text/csv; charset=utf-8",
-        "content-disposition": `attachment; filename="finanza-${hoyISO()}.csv"`,
-      },
-    });
-  } catch (error) {
-    return respuestaError(error);
-  }
-}
+export const GET = protegido(async () => {
+  const [movimientos, cuentas, metas, catalogo] = await Promise.all([
+    listarMovimientos({ limite: 100_000 }),
+    listarCuentas(),
+    listarMetas(),
+    obtenerCatalogo(),
+  ]);
+  const cuenta = new Map(cuentas.map((c) => [c.id, c.nombre]));
+  const meta = new Map(metas.map((m) => [m.id, m.nombre]));
+
+  const filas = [
+    ["fecha", "tipo", "categoria", "monto", "cuenta", "cuenta_destino", "meta", "nota"].map(celda).join(","),
+    ...movimientos.map((m) =>
+      [
+        m.fecha,
+        m.tipo,
+        catalogo.etiqueta(m.categoria),
+        m.monto,
+        cuenta.get(m.cuentaId) ?? "",
+        m.cuentaDestinoId ? (cuenta.get(m.cuentaDestinoId) ?? "") : "",
+        m.metaId ? (meta.get(m.metaId) ?? "") : "",
+        m.nota,
+      ]
+        .map(celda)
+        .join(","),
+    ),
+  ];
+  // El BOM hace que Excel abra los acentos correctamente.
+  return new Response(`﻿${filas.join("\r\n")}`, {
+    headers: {
+      "content-type": "text/csv; charset=utf-8",
+      "content-disposition": `attachment; filename="finanza-${hoyISO()}.csv"`,
+    },
+  });
+});

@@ -13,8 +13,9 @@ function secreto(): Uint8Array {
   return new TextEncoder().encode(valor);
 }
 
-export async function crearSesion(): Promise<string> {
-  return new SignJWT({ rol: "dueño" })
+/** `version` ata el token a la versión de sesión vigente: al subirla, caen todos. */
+export async function crearSesion(version: number): Promise<string> {
+  return new SignJWT({ v: version })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject("finanza")
     .setIssuedAt()
@@ -22,31 +23,20 @@ export async function crearSesion(): Promise<string> {
     .sign(secreto());
 }
 
-export async function sesionValida(token: string | undefined): Promise<boolean> {
-  if (!token) return false;
+/** Verifica firma y caducidad. Devuelve la versión de sesión del token. */
+export async function leerSesion(token: string | undefined): Promise<{ version: number } | null> {
+  if (!token) return null;
   try {
-    await jwtVerify(token, secreto(), { subject: "finanza" });
-    return true;
+    const { payload } = await jwtVerify(token, secreto(), { subject: "finanza" });
+    return { version: typeof payload.v === "number" ? payload.v : 0 };
   } catch {
-    return false;
+    return null;
   }
 }
 
-/** Comparación en tiempo constante sobre el hash, válida en Node y en Edge. */
-export async function claveCorrecta(intento: string): Promise<boolean> {
-  const esperada = process.env.APP_PASSWORD;
-  if (!esperada) {
-    throw new Error("Falta APP_PASSWORD: define la clave con la que entras a tu panel.");
-  }
-  const [a, b] = await Promise.all([digest(intento), digest(esperada)]);
-  let diferencia = 0;
-  for (let i = 0; i < a.length; i++) diferencia |= a[i] ^ b[i];
-  return diferencia === 0;
-}
-
-async function digest(valor: string): Promise<Uint8Array> {
-  const datos = new TextEncoder().encode(valor);
-  return new Uint8Array(await crypto.subtle.digest("SHA-256", datos));
+/** Comprobación optimista (solo firma), la que usa el proxy. */
+export async function sesionValida(token: string | undefined): Promise<boolean> {
+  return (await leerSesion(token)) !== null;
 }
 
 export const opcionesCookie = {

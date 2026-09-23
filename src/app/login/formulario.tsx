@@ -31,7 +31,7 @@ export function FormularioLogin({ volver }: { volver: string }) {
         return;
       }
       // `refresh` limpia la caché del router antes de entrar al panel.
-      router.replace(volver.startsWith("/") ? volver : "/");
+      router.replace(volver);
       router.refresh();
     } catch {
       setError("No hay conexión con el servidor. Revisa tu red.");
@@ -51,10 +51,10 @@ export function FormularioLogin({ volver }: { volver: string }) {
         <Marca />
         <div>
           <h1 className="font-display text-2xl font-semibold text-tinta">
-            Tu dinero, <span className="texto-degradado">en orden</span>
+            Cuánto puedes gastar hoy
           </h1>
           <p className="mt-2 text-[14px] leading-relaxed text-tinta-3">
-            Panel privado de gastos, ahorro y recordatorios de pago.
+            Con tus pagos fijos ya descontados. Solo tú entras aquí.
           </p>
         </div>
       </div>
@@ -87,10 +87,11 @@ export function FormularioLogin({ volver }: { volver: string }) {
       </form>
 
       <p className="mt-6 text-center text-[12.5px] leading-relaxed text-tinta-3">
-        Solo tú entras aquí. La clave se define en la variable de entorno
+        La primera clave es la de la variable
         <span className="mx-1 rounded bg-superficie-alta px-1.5 py-0.5 font-mono text-[11.5px] text-tinta-2">
           APP_PASSWORD
         </span>
+        ; después puedes cambiarla en Ajustes.
       </p>
     </motion.div>
   );

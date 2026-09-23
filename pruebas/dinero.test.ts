@@ -24,11 +24,13 @@ describe("pesosCompacto", () => {
 
 describe("techoBonito", () => {
   it("sube al siguiente número redondo", () => {
-    assert.equal(techoBonito(1_356_900), 2_000_000);
-    assert.equal(techoBonito(678_000), 1_000_000);
+    assert.equal(techoBonito(1_356_900), 1_500_000);
+    assert.equal(techoBonito(678_000), 800_000);
     assert.equal(techoBonito(210_000), 250_000);
-    assert.equal(techoBonito(2_400_000), 2_500_000);
+    assert.equal(techoBonito(2_780_000), 3_000_000);
     assert.equal(techoBonito(4_900), 5_000);
+    assert.equal(techoBonito(9_100), 10_000);
+    assert.equal(techoBonito(3_000_000), 3_000_000);
   });
 
   it("nunca devuelve cero", () => {

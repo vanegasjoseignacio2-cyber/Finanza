@@ -20,11 +20,13 @@ export const metadata: Metadata = {
     default: "Finanza",
     template: "%s · Finanza",
   },
-  description:
-    "Panel personal de gastos, ahorro y recordatorios de pago con aviso diario por correo.",
+  description: "Cuánto puedes gastar hoy, tus pagos fijos y tus metas, con aviso diario por correo.",
   applicationName: "Finanza",
   appleWebApp: { capable: true, title: "Finanza", statusBarStyle: "black-translucent" },
-  icons: { icon: "/icono.svg" },
+  icons: {
+    icon: [{ url: "/icono.svg", type: "image/svg+xml" }],
+    apple: [{ url: "/iconos/apple-touch-icon.png", sizes: "180x180" }],
+  },
 };
 
 export const viewport: Viewport = {

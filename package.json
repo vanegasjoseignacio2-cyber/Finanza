@@ -7,9 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
-    "test": "rm -rf .test-build && tsc -p tsconfig.test.json && node --test '.test-build/pruebas/*.test.js'",
-    "verificar": "npm run typecheck && npm run lint && npm run test"
+    "typecheck": "next typegen && tsc --noEmit",
+    "test": "rm -rf .test-build && tsc -p tsconfig.test.json && node --test '.test-build/pruebas/*.test.js' '.test-build/pruebas/integracion/*.test.js'",
+    "verificar": "npm run typecheck && npm run lint && npm run test",
+    "restaurar": "node --env-file-if-exists=.env.local scripts/restaurar.mjs"
   },
   "dependencies": {
     "framer-motion": "^13.4.0",

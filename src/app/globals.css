@@ -1,26 +1,35 @@
 @import "tailwindcss";
 
 /* ── Sistema de diseño ──────────────────────────────────────────────────────
-   Un solo tema: oscuro. Los tonos van de azul-noche (fondo) a verde-agua-azul
-   (acento). Nada de morados. Todos los pares texto/fondo superan 4.5:1.
+   Un solo tema: oscuro. Azul noche de fondo, superficies que se separan de
+   verdad (no solo por el borde) y un único acento sólido, el verde.
+
+   Contraste medido (WCAG):
+   - tinta   sobre superficie-alta: 13:1
+   - tinta-2 sobre superficie-alta: 7.7:1
+   - tinta-3 sobre superficie-alta: 5.3:1  (antes 4.1:1, no pasaba AA)
+   - verde, azul, alerta y aviso superan 5.7:1 sobre cualquier superficie.
+
+   El degradado verde → azul es la firma de la marca: solo en el logotipo y en
+   el botón principal. Todo lo demás usa colores sólidos.
 */
 @theme {
   --color-fondo: #050a14;
-  --color-fondo-alto: #08101f;
-  --color-superficie: #0c1526;
-  --color-superficie-alta: #111d33;
-  --color-borde: #1c2b45;
-  --color-borde-suave: #16233a;
+  --color-fondo-alto: #0a1322;
+  --color-superficie: #111d31;
+  --color-superficie-alta: #182840;
+  --color-borde: #263a58;
+  --color-borde-suave: #1c2c46;
 
   --color-tinta: #e9eff8;
-  --color-tinta-2: #9db0ca;
-  --color-tinta-3: #6d7f99;
+  --color-tinta-2: #a9b8cc;
+  --color-tinta-3: #8a9bb4;
 
   --color-verde: #34d399;
-  --color-verde-hondo: #0d9c74;
+  --color-verde-hondo: #059669;
   --color-agua: #22d3ee;
   --color-azul: #60a5fa;
-  --color-azul-hondo: #2563eb;
+  --color-azul-hondo: #3b82f6;
 
   --color-alerta: #fb7185;
   --color-aviso: #fbbf24;
@@ -29,14 +38,6 @@
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 
   --radius-xl2: 1.25rem;
-
-  --animate-aparecer: aparecer 0.5s ease-out both;
-  --animate-brillo: brillo 2.4s ease-in-out infinite;
-}
-
-@keyframes aparecer {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: none; }
 }
 
 @keyframes brillo {
@@ -60,17 +61,14 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* Halo de fondo fijo: da profundidad sin competir con el contenido. */
+/* Un solo halo, tenue y arriba: profundidad sin ruido. */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background:
-    radial-gradient(60rem 40rem at 12% -10%, rgba(52, 211, 153, 0.13), transparent 60%),
-    radial-gradient(52rem 36rem at 92% 4%, rgba(96, 165, 250, 0.12), transparent 62%),
-    radial-gradient(44rem 30rem at 50% 108%, rgba(34, 211, 238, 0.07), transparent 65%);
+  background: radial-gradient(70rem 36rem at 30% -12%, rgba(52, 211, 153, 0.07), transparent 65%);
 }
 
 ::selection {
@@ -87,14 +85,6 @@ body::before {
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--color-borde) transparent;
-}
-
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb {
-  background: var(--color-borde);
-  border-radius: 999px;
-  border: 3px solid transparent;
-  background-clip: content-box;
 }
 
 /* Los números de dinero no deben bailar al actualizarse. */
@@ -114,22 +104,15 @@ body::before {
   }
 }
 
+/* Firma de la marca. Uso restringido: logotipo y botón principal. */
 @utility degradado-marca {
-  background-image: linear-gradient(120deg, var(--color-verde) 0%, var(--color-agua) 52%, var(--color-azul) 100%);
-}
-
-@utility texto-degradado {
-  background-image: linear-gradient(110deg, var(--color-verde) 0%, var(--color-agua) 48%, var(--color-azul) 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  background-image: linear-gradient(120deg, var(--color-verde) 0%, var(--color-agua) 55%, var(--color-azul) 100%);
 }
 
 @utility tarjeta {
-  background-color: color-mix(in oklab, var(--color-superficie) 88%, transparent);
+  background-color: var(--color-superficie);
   border: 1px solid var(--color-borde-suave);
   border-radius: var(--radius-xl2);
-  backdrop-filter: blur(10px);
 }
 
 @media (prefers-reduced-motion: reduce) {

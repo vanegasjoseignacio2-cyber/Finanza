@@ -1,18 +1,20 @@
 # Finanza
 
-Panel personal de gastos, ahorro y recordatorios de pago, con un correo diario
-que te avisa antes de cada vencimiento.
+Panel personal de finanzas que contesta una sola pregunta, la que importa un
+martes cualquiera: **¿cuánto puedo gastar hoy sin arruinar el mes?**
 
-No es una demo: guarda en una base de datos real (MongoDB Atlas), está detrás de
-una clave que solo tú conoces y el aviso diario se dispara solo, sin que tengas
-que dejar nada encendido.
+```
+libre   = ingreso del mes − gastado − ahorro neto − pagos fijos que aún faltan
+por día = libre ÷ días que quedan del mes (contando hoy)
+```
 
-- **Next.js 16** (App Router) + **TypeScript**
-- **Tailwind CSS 4** · solo modo oscuro · degradados verde → azul
-- **Framer Motion** para las animaciones, **Lucide** para los iconos
-- **Google Fonts**: Sora (títulos) e Inter (texto y cifras)
-- **MongoDB Atlas** como base de datos
-- Correo diario con **Resend** o **SMTP de Gmail**, a elección
+Los pagos fijos pendientes se descuentan **antes** de que lleguen: si el plan
+del celular vence el 28 y hoy es 23, lo libre ya no lo cuenta como tuyo.
+
+- **Next.js 16** (App Router) + **TypeScript**, **MongoDB Atlas**
+- **Tailwind CSS 4**, solo modo oscuro, **Framer Motion**, **Lucide**, Sora e Inter
+- Correo diario con **Resend** o **SMTP de Gmail**, disparado por cron
+- Instalable en el celular (PWA), con acceso directo a "nuevo gasto"
 
 ---
 
@@ -20,13 +22,30 @@ que dejar nada encendido.
 
 | Sección | Qué resuelve |
 |---|---|
-| **Panel** | Ingreso, gastado, ahorrado y disponible del mes. Anillo de progreso de tu meta con proyección de cuántos meses faltan, gastos por categoría, tendencia de los últimos 6 meses y consejos calculados con tus propios números. |
-| **Movimientos** | Gastos, aportes al ahorro e ingresos extra. Filtros por mes, tipo y categoría. Exportación a CSV. |
-| **Recordatorios** | Pagos que se repiten cada mes. Se marcan como pagados solos cuando registras un gasto de esa categoría, o a mano. Se pueden pausar. |
-| **Ajustes** | Ingreso mensual, meta de ahorro, correo de destino, días de anticipación del aviso y un botón para enviarte un correo de prueba. |
-| **Correo diario** | Lo que vence en los próximos días, las cifras del mes, el progreso de la meta y un consejo. Nunca se envía dos veces el mismo día. |
+| **Hoy** | Cuánto puedes gastar por día, con el desglose que lo explica. Los pagos fijos del mes con su botón de pagar, lo que requiere atención (topes pasados, pagos vencidos, metas que no van a tiempo) y tus metas. |
+| **Movimientos** | Gastos, ingresos, aportes y retiros de metas, transferencias entre cuentas. Saldo por cuenta, búsqueda en todos los meses, edición y "repetir" con un toque. Exportación a CSV. |
+| **Presupuesto** | Tope mensual por categoría (aviso al 85 %, alerta al pasarse), los pagos fijos y la tendencia de seis meses contra tu ingreso. |
+| **Metas** | Varias metas, con aportes **y retiros**. Ritmo real, proyección y, si tienen fecha, cuánto apartar cada mes. |
+| **Ajustes** | Sueldo con historial, cuentas, categorías propias, correo diario (con el estado de los últimos envíos), clave, sesiones y respaldo. |
+| **Correo diario** | Abre con lo que puedes gastar por día y el mismo desglose. Pagos por vencer o vencidos, alertas y metas. Los lunes lleva adjunto el respaldo completo. |
 
----
+### Reglas que conviene conocer
+
+- **Un pago fijo cuenta como pagado solo si consta.** Hay dos formas: registrar
+  el pago (crea el gasto vinculado) o marcarlo a mano como "ya estaba pagado".
+  Un gasto suelto de la misma categoría **no** lo marca: un cambio de aceite no
+  es el seguro de la moto. Al registrar un gasto, la app sugiere vincularlo si
+  hay un pago fijo pendiente de esa categoría, pero nunca lo hace sola.
+- **El sueldo se espera hasta que se registra.** Mientras no registres el de
+  este mes, el cálculo usa el sueldo configurado. Al registrarlo, el real lo
+  reemplaza. Cambiar el sueldo "desde" un mes **no reescribe los anteriores**.
+- **El ahorro es plata apartada, no gastada.** Aportar a una meta la saca de lo
+  libre; retirarla la devuelve. Si la meta vive en una cuenta, el aporte suma a
+  su saldo.
+- **El ritmo de una meta se mide sobre todos los meses** desde el primer aporte,
+  también los meses sin aporte. Si no, la proyección sería optimista.
+- **Los saldos de las cuentas** son el saldo inicial más todo lo registrado en
+  esa cuenta. Si no registras algo, el saldo no lo sabe.
 
 ## Cómo ejecutarlo a diario sin VPS y sin pagar
 
@@ -65,8 +84,15 @@ Ya viene el flujo en `.github/workflows/recordatorio-diario.yml`, con reintentos
   mucha carga, y en repositorios públicos las desactiva tras 60 días sin
   actividad.
 
-Si usas A y B a la vez no pasa nada: el registro de envíos del día evita que
-llegue un correo duplicado.
+Puedes usar A y B a la vez: GitHub dispara a las 12:15 UTC, un cuarto de hora
+después de Vercel, y **antes de enviar se reserva el día de forma atómica** en
+la base. Si los dos disparos llegaran al mismo tiempo, solo uno envía (hay una
+prueba de integración que lo comprueba con envíos simultáneos).
+
+El correo no sale todos los días: solo cuando vence un pago, hay una alerta
+seria (por ejemplo, te pasaste de un tope) o es lunes y toca el respaldo. Si
+quieres recibirlo siempre, actívalo en Ajustes. En **Ajustes → Correo diario**
+ves qué pasó los últimos días: enviado, sin novedades o el error exacto.
 
 ### Opción C — Un disparador externo gratuito
 
@@ -150,11 +176,41 @@ npm run dev          # http://localhost:3000
 2. Pega **todas** las variables de `.env.example` en *Settings → Environment
    Variables* (incluida `CRON_SECRET`, que es lo que activa el cron de Vercel).
 3. Pon `APP_URL` con la URL final del proyecto: es el enlace del botón del correo.
-4. Despliega, entra con tu clave y configura tu ingreso y tu meta en **Ajustes**.
+4. Despliega y entra con tu clave. La pantalla **Hoy** te guía: define el sueldo,
+   agrega tus pagos fijos y crea una meta.
 5. En **Ajustes → Enviar prueba** comprueba que el correo llega. Mira también
    la carpeta de spam la primera vez y marca el remitente como conocido.
 
 ---
+
+## Seguridad
+
+- La primera clave es `APP_PASSWORD`. Desde **Ajustes → Seguridad** puedes
+  cambiarla: se guarda con `scrypt` en la base y desde ese momento manda ella.
+- Cambiar la clave cierra las demás sesiones. También hay un botón para cerrar
+  **todas**, incluida la actual (útil si perdiste el celular).
+- Tras 5 intentos fallidos seguidos desde la misma IP, el acceso se bloquea
+  15 minutos. La IP se guarda solo como hash.
+- El respaldo nunca incluye la clave ni la versión de sesión.
+
+## Respaldo y restauración
+
+Cada lunes el correo lleva adjunto `finanza-respaldo-AAAA-MM-DD.json` (se
+desactiva en Ajustes). También se descarga en **Ajustes → Tus datos**. Contiene
+todo: movimientos, cuentas, metas, pagos fijos, topes, categorías y ajustes, en
+Extended JSON para conservar los identificadores.
+
+Para restaurarlo en una base (por ejemplo, un clúster nuevo de Atlas):
+
+```bash
+# MONGODB_URI y MONGODB_DB se leen de .env.local
+npm run restaurar -- finanza-respaldo-2026-09-21.json
+
+# si la base ya tiene datos, hay que pedir explícitamente reemplazarlos
+npm run restaurar -- finanza-respaldo-2026-09-21.json --reemplazar
+```
+
+La clave y las sesiones de la base de destino se conservan.
 
 ## Comandos
 
@@ -165,12 +221,26 @@ npm run lint        # ESLint
 npm run typecheck   # TypeScript sin emitir
 npm test            # pruebas de la lógica (fechas, cálculos, correo)
 npm run verificar   # las tres anteriores de un tirón
+npm run restaurar   # restaura un respaldo (ver arriba)
 ```
 
-Las pruebas cubren lo que de verdad puede fallar en silencio: el cálculo del
-próximo vencimiento (incluidos los días 31 y febrero), el reparto por categorías,
-qué recordatorios merecen aviso, la aritmética del resumen y el escapado de HTML
-en el correo.
+Hay dos niveles de pruebas:
+
+- **Unitarias** (siempre): la aritmética de lo libre y los pagos pendientes,
+  vencimientos (días 31, febrero, cambio de año), sueldo por tramos, metas con
+  retiros, saldos por cuenta, topes, alertas y el correo.
+- **Integración contra MongoDB real**: se ejecutan cuando existe
+  `MONGODB_URI_PRUEBAS`. Cubren migración de datos antiguos, validaciones,
+  agregaciones, la reserva atómica del envío con disparos simultáneos, el
+  límite de intentos y el ciclo completo respaldo → restauración. Cada archivo
+  usa una base propia que se borra al terminar.
+
+  ```bash
+  MONGODB_URI_PRUEBAS="mongodb://localhost:27017" npm test
+  ```
+
+El flujo `.github/workflows/ci.yml` corre todo esto en cada push, con un
+MongoDB 7 real como servicio, además del lint y la compilación de producción.
 
 ---
 
@@ -179,38 +249,39 @@ en el correo.
 ```
 src/
   app/
-    (panel)/            Panel, movimientos, recordatorios y ajustes
-    api/                Endpoints REST (incluido el del cron)
+    (panel)/            Hoy, movimientos, presupuesto, metas, ajustes y /nuevo
+    api/                Endpoints REST (protegidos) y el del cron
     login/              Entrada con clave
+    manifest.ts         PWA instalable con accesos directos
   components/
-    graficos/           Anillo de meta, barras por categoría, tendencia
-    paneles/            Listas, tarjetas de cifras y formularios
-    ui/                 Botón, campos, modal, avisos, tarjeta
+    captura.tsx         Crear, editar y repetir movimientos desde cualquier pantalla
+    paneles/            Pagos fijos, listas, alertas, barras
+    graficos/           Tendencia de seis meses
+    ui/                 Botón, campos, modal, avisos, segmentado, cifra animada
   lib/
-    datos.ts            Lectura y escritura en MongoDB
-    finanzas.ts         Cálculos puros (probados)
-    email/              Envío (Resend o SMTP) y plantilla del correo
+    finanzas.ts         Todos los cálculos, puros y probados
+    datos.ts            Lectura y escritura en MongoDB (sin lógica de dominio)
+    seguridad.ts        Claves, sesión vigente y protección de las rutas
     recordatorio-diario.ts  Lo que ejecuta el cron
-  proxy.ts              Protege todas las rutas salvo login y cron
+    email/              Envío (Resend o SMTP) y plantilla del correo
+  proxy.ts              Primer filtro de sesión (firma del token)
+pruebas/                Unitarias e integración
+scripts/restaurar.mjs   Restauración de respaldos
 ```
 
-### Decisiones que conviene conocer
+### Colores
 
-- **El ahorro se descuenta de lo disponible.** Sale del mismo bolsillo que los
-  gastos, así que `disponible = ingreso − gastos − ahorro`.
-- **Los recordatorios siempre se juzgan contra la fecha de hoy**, aunque estés
-  mirando un mes anterior en el panel.
-- **`TZ_APP` manda sobre el reloj del servidor.** Los servidores van en UTC; el
-  "hoy" de la app se calcula en `America/Bogota` para que un vencimiento no se
-  adelante de madrugada.
-- **El correo no se duplica**: cada envío queda registrado por fecha, así que si
-  el cron se dispara dos veces solo sale uno.
-- **Los colores de las series de la gráfica** (`src/lib/paleta.ts`) están
-  validados para daltonismo y contraste. Los verdes y azules brillantes de la
-  interfaz son para texto e iconos, no para distinguir datos.
+Un solo tema oscuro. Superficies que se separan del fondo por luminosidad, no
+solo por el borde, y un único acento sólido, el verde. El degradado verde →
+azul es la firma: solo en el logotipo y en el botón principal. Todos los textos
+superan 4,5:1 de contraste (el gris más tenue, 5,2:1 sobre la superficie más
+clara). Las series del gráfico (`src/lib/paleta.ts`) están validadas para
+daltonismo; el rojo y el ámbar se reservan para dinero en riesgo y siempre van
+con texto.
 
-### Añadir categorías
+### Categorías
 
-Edita `src/lib/categorias.ts` y añade una entrada con un icono de
-[Lucide](https://lucide.dev); luego registra ese icono en
-`src/components/iconos.tsx`. Nada más.
+Las propias se crean desde **Ajustes → Categorías**, con un icono a elegir; las
+de fábrica se pueden renombrar u ocultar (los movimientos viejos se conservan).
+Para añadir iconos a la lista elegible, agrégalos a `ICONOS_DISPONIBLES` en
+`src/lib/categorias.ts` y regístralos en `src/components/iconos.tsx`.

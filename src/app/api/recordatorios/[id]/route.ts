@@ -1,82 +1,38 @@
-import {
-  actualizarRecordatorio,
-  desmarcarPago,
-  eliminarRecordatorio,
-} from "@/lib/datos";
-import { esCategoriaValida } from "@/lib/categorias";
-import { esMesValido } from "@/lib/fechas";
+import { actualizarRecordatorio, eliminarRecordatorio, marcarPagoManual } from "@/lib/datos";
+import { protegido } from "@/lib/seguridad";
 import {
   comoBooleano,
   comoDia,
+  comoMes,
   comoMonto,
   comoTexto,
   leerJson,
-  respuestaError,
 } from "@/lib/validacion";
 
 export const dynamic = "force-dynamic";
 
-export async function PATCH(
-  request: Request,
-  ctx: { params: Promise<{ id: string }> },
-) {
-  try {
-    const { id } = await ctx.params;
-    const cuerpo = await leerJson(request);
+type Ctx = { params: Promise<{ id: string }> };
 
-    // Caso especial: deshacer el pago de un mes concreto.
-    if (cuerpo.desmarcarMes) {
-      const mes = String(cuerpo.desmarcarMes);
-      if (!esMesValido(mes)) {
-        return Response.json({ error: "Mes inválido." }, { status: 400 });
-      }
-      const actualizado = await desmarcarPago(id, mes);
-      if (!actualizado) {
-        return Response.json({ error: "No encontramos ese recordatorio." }, { status: 404 });
-      }
-      return Response.json({ recordatorio: actualizado });
-    }
+export const PATCH = protegido<Ctx>(async (request, { params }) => {
+  const { id } = await params;
+  const c = await leerJson(request);
 
-    const cambios: Parameters<typeof actualizarRecordatorio>[1] = {};
-    if (cuerpo.titulo !== undefined) cambios.titulo = comoTexto(cuerpo.titulo, "título", 80);
-    if (cuerpo.dia !== undefined) cambios.dia = comoDia(cuerpo.dia);
-    if (cuerpo.montoEstimado !== undefined) {
-      cambios.montoEstimado = comoMonto(cuerpo.montoEstimado, "monto estimado", true);
-    }
-    if (cuerpo.categoria !== undefined) {
-      cambios.categoria = esCategoriaValida(cuerpo.categoria) ? (cuerpo.categoria as string) : "";
-    }
-    if (cuerpo.activo !== undefined) cambios.activo = comoBooleano(cuerpo.activo, true);
-    if (cuerpo.marcarPagado !== undefined) {
-      const mes = String(cuerpo.marcarPagado);
-      if (!esMesValido(mes)) {
-        return Response.json({ error: "Mes inválido." }, { status: 400 });
-      }
-      cambios.marcarPagado = mes;
-    }
-
-    const actualizado = await actualizarRecordatorio(id, cambios);
-    if (!actualizado) {
-      return Response.json({ error: "No encontramos ese recordatorio." }, { status: 404 });
-    }
-    return Response.json({ recordatorio: actualizado });
-  } catch (error) {
-    return respuestaError(error);
+  // Marca manual: "pagado sin registrar gasto" (lo pagó otra persona, etc.).
+  if (c.pagadoManual !== undefined) {
+    const recordatorio = await marcarPagoManual(id, comoMes(c.mes), comoBooleano(c.pagadoManual));
+    return Response.json({ recordatorio });
   }
-}
 
-export async function DELETE(
-  _request: Request,
-  ctx: { params: Promise<{ id: string }> },
-) {
-  try {
-    const { id } = await ctx.params;
-    const borrado = await eliminarRecordatorio(id);
-    if (!borrado) {
-      return Response.json({ error: "No encontramos ese recordatorio." }, { status: 404 });
-    }
-    return Response.json({ ok: true });
-  } catch (error) {
-    return respuestaError(error);
-  }
-}
+  const cambios: Parameters<typeof actualizarRecordatorio>[1] = {};
+  if (c.titulo !== undefined) cambios.titulo = comoTexto(c.titulo, "nombre", 80);
+  if (c.dia !== undefined) cambios.dia = comoDia(c.dia);
+  if (c.montoEstimado !== undefined) cambios.montoEstimado = comoMonto(c.montoEstimado, "monto estimado", true);
+  if (c.categoria !== undefined) cambios.categoria = typeof c.categoria === "string" ? c.categoria : "";
+  if (c.activo !== undefined) cambios.activo = comoBooleano(c.activo, true);
+  return Response.json({ recordatorio: await actualizarRecordatorio(id, cambios) });
+});
+
+export const DELETE = protegido<Ctx>(async (_request, { params }) => {
+  await eliminarRecordatorio((await params).id);
+  return Response.json({ ok: true });
+});

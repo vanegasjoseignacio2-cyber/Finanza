@@ -1,15 +1,10 @@
 import { calcularResumen } from "@/lib/datos";
 import { esMesValido, mesActual } from "@/lib/fechas";
-import { respuestaError } from "@/lib/validacion";
+import { protegido } from "@/lib/seguridad";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: Request) {
-  try {
-    const mes = new URL(request.url).searchParams.get("mes");
-    const resumen = await calcularResumen(esMesValido(mes) ? mes : mesActual());
-    return Response.json(resumen);
-  } catch (error) {
-    return respuestaError(error);
-  }
-}
+export const GET = protegido(async (request) => {
+  const mes = new URL(request.url).searchParams.get("mes");
+  return Response.json(await calcularResumen(esMesValido(mes) ? mes : mesActual()));
+});

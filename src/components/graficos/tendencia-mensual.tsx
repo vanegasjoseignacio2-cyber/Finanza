@@ -16,7 +16,8 @@ export function TendenciaMensual({ puntos }: { puntos: PuntoTendencia[] }) {
   const [activo, setActivo] = useState<number | null>(null);
 
   // La escala sube al siguiente número redondo: el eje se lee mejor.
-  const maximo = techoBonito(Math.max(...puntos.flatMap((p) => [p.gastado, p.ahorrado]), 1));
+  // La escala incluye el ingreso: la línea de referencia nunca se sale del gráfico.
+  const maximo = techoBonito(Math.max(...puntos.flatMap((p) => [p.gastado, Math.max(0, p.ahorrado), p.ingreso]), 1));
   const hayDatos = puntos.some((p) => p.gastado > 0 || p.ahorrado > 0);
 
   if (!hayDatos) {
@@ -41,6 +42,10 @@ export function TendenciaMensual({ puntos }: { puntos: PuntoTendencia[] }) {
             {serie.etiqueta}
           </li>
         ))}
+        <li className="flex items-center gap-2 text-[12.5px] text-tinta-2">
+          <span className="w-3.5 border-t-2 border-dashed border-tinta-2" aria-hidden="true" />
+          Ingreso del mes
+        </li>
       </ul>
 
       <div className="relative">
@@ -68,7 +73,7 @@ export function TendenciaMensual({ puntos }: { puntos: PuntoTendencia[] }) {
                 onFocus={() => setActivo(indice)}
                 onBlur={() => setActivo((a) => (a === indice ? null : a))}
                 onClick={() => setActivo((a) => (a === indice ? null : indice))}
-                aria-label={`${punto.etiqueta}: gastado ${pesos(punto.gastado)}, ahorrado ${pesos(punto.ahorrado)}`}
+                aria-label={`${punto.etiqueta}: ingreso ${pesos(punto.ingreso)}, gastado ${pesos(punto.gastado)}, ahorrado ${pesos(punto.ahorrado)}`}
                 className="group relative flex h-full flex-1 cursor-pointer flex-col justify-end rounded-lg pb-7 transition-colors hover:bg-superficie-alta/40 focus-visible:bg-superficie-alta/40"
               >
                 {resaltado && (
@@ -79,6 +84,11 @@ export function TendenciaMensual({ puntos }: { puntos: PuntoTendencia[] }) {
                     role="status"
                     className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 w-max -translate-x-1/2 rounded-lg border border-borde bg-superficie px-2.5 py-2 text-left shadow-xl"
                   >
+                    <span className="flex items-center gap-2 text-[11.5px] whitespace-nowrap">
+                      <span className="w-2 border-t-2 border-dashed border-tinta-2" aria-hidden="true" />
+                      <span className="text-tinta-3">Ingreso</span>
+                      <span className="ml-auto font-semibold tabular text-tinta">{pesos(punto.ingreso)}</span>
+                    </span>
                     {SERIES.map((serie) => (
                       <span key={serie.clave} className="flex items-center gap-2 text-[11.5px] whitespace-nowrap">
                         <span
@@ -95,9 +105,16 @@ export function TendenciaMensual({ puntos }: { puntos: PuntoTendencia[] }) {
                   </motion.div>
                 )}
 
+                {punto.ingreso > 0 && (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-x-1.5 border-t-2 border-dashed border-tinta-2/80"
+                    style={{ bottom: `calc(1.75rem + (100% - 1.75rem) * ${punto.ingreso / maximo})` }}
+                  />
+                )}
                 <span className="flex h-full items-end justify-center gap-[2px]">
                   {SERIES.map((serie, i) => {
-                    const valor = punto[serie.clave];
+                    const valor = Math.max(0, punto[serie.clave]);
                     const alto = valor > 0 ? Math.max(2, (valor / maximo) * 100) : 0;
                     return (
                       <motion.span

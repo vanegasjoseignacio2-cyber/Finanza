@@ -4,12 +4,14 @@ import { motion } from "framer-motion";
 import type { ReactNode } from "react";
 
 export function Tarjeta({
+  id,
   titulo,
   accion,
   children,
   className = "",
   retraso = 0,
 }: {
+  id?: string;
   titulo?: string;
   accion?: ReactNode;
   children: ReactNode;
@@ -18,6 +20,7 @@ export function Tarjeta({
 }) {
   return (
     <motion.section
+      id={id}
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: retraso, ease: [0.22, 1, 0.36, 1] }}

@@ -9,8 +9,3 @@
  */
 export const VERDE_SERIE = "#059669";
 export const AZUL_SERIE = "#3b82f6";
-
-/** Degradado de marca, usado como una sola familia visual (no codifica nada). */
-export const MARCA_INICIO = "#34d399";
-export const MARCA_MEDIO = "#22d3ee";
-export const MARCA_FIN = "#60a5fa";

@@ -6,7 +6,7 @@ export default function NoEncontrado() {
     <main className="flex min-h-dvh flex-col items-center justify-center gap-6 px-5 py-12 text-center">
       <Marca />
       <div>
-        <p className="font-display text-5xl font-semibold texto-degradado">404</p>
+        <p className="font-display text-5xl font-semibold text-verde">404</p>
         <h1 className="mt-3 font-display text-xl font-semibold text-tinta">
           Esta página no existe
         </h1>

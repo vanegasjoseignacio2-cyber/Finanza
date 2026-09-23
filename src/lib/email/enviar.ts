@@ -3,11 +3,18 @@ import { Resend } from "resend";
 
 export type Proveedor = "resend" | "smtp";
 
+export interface Adjunto {
+  nombre: string;
+  contenido: string;
+  tipo: string;
+}
+
 export interface CorreoSalida {
   para: string;
   asunto: string;
   html: string;
   texto: string;
+  adjuntos?: Adjunto[];
 }
 
 export interface ResultadoEnvio {
@@ -52,6 +59,11 @@ export async function enviarCorreo(correo: CorreoSalida): Promise<ResultadoEnvio
         subject: correo.asunto,
         html: correo.html,
         text: correo.texto,
+        attachments: correo.adjuntos?.map((a) => ({
+          filename: a.nombre,
+          content: Buffer.from(a.contenido, "utf8"),
+          contentType: a.tipo,
+        })),
       });
       if (error) return { ok: false, proveedor, error: error.message };
       return { ok: true, proveedor, id: data?.id };
@@ -80,6 +92,11 @@ export async function enviarCorreo(correo: CorreoSalida): Promise<ResultadoEnvio
       subject: correo.asunto,
       html: correo.html,
       text: correo.texto,
+      attachments: correo.adjuntos?.map((a) => ({
+        filename: a.nombre,
+        content: a.contenido,
+        contentType: a.tipo,
+      })),
     });
     return { ok: true, proveedor, id: info.messageId };
   } catch (error) {

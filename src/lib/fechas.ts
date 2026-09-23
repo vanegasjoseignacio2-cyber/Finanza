@@ -5,6 +5,8 @@ export const MESES = [
   "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
 ];
 
+export const DIAS_SEMANA = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+
 export const MESES_CORTOS = [
   "ene", "feb", "mar", "abr", "may", "jun",
   "jul", "ago", "sep", "oct", "nov", "dic",
@@ -93,4 +95,16 @@ export function fechaLarga(fecha: string): string {
 export function fechaCorta(fecha: string): string {
   const [, m, d] = fecha.split("-").map(Number);
   return `${d} ${MESES_CORTOS[m - 1]}`;
+}
+
+/** Cantidad de meses entre dos YYYY-MM, contando ambos extremos: (2026-01, 2026-03) -> 3. */
+export function mesesEntre(desde: string, hasta: string): number {
+  const [a1, m1] = desde.split("-").map(Number);
+  const [a2, m2] = hasta.split("-").map(Number);
+  return (a2 * 12 + m2) - (a1 * 12 + m1) + 1;
+}
+
+/** Día de la semana de una fecha YYYY-MM-DD: 0 domingo … 1 lunes … 6 sábado. */
+export function diaSemana(fecha: string): number {
+  return new Date(`${fecha}T00:00:00Z`).getUTCDay();
 }

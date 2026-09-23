@@ -1,62 +1,25 @@
 import { guardarAjustes, obtenerAjustes } from "@/lib/datos";
 import { diagnosticoCorreo } from "@/lib/email/estado";
-import {
-  comoBooleano,
-  comoEmail,
-  comoMonto,
-  comoTexto,
-  leerJson,
-  respuestaError,
-} from "@/lib/validacion";
-import { esFechaValida } from "@/lib/fechas";
+import { protegido } from "@/lib/seguridad";
 import type { Ajustes } from "@/lib/types";
+import { comoBooleano, comoEmail, leerJson } from "@/lib/validacion";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  try {
-    return Response.json({
-      ajustes: await obtenerAjustes(),
-      diagnostico: diagnosticoCorreo(),
-    });
-  } catch (error) {
-    return respuestaError(error);
+export const GET = protegido(async () =>
+  Response.json({ ajustes: await obtenerAjustes(), diagnostico: diagnosticoCorreo() }),
+);
+
+export const PUT = protegido(async (request) => {
+  const c = await leerJson(request);
+  const cambios: Partial<Ajustes> = {};
+  if (c.email !== undefined) cambios.email = comoEmail(c.email);
+  if (c.emailActivo !== undefined) cambios.emailActivo = comoBooleano(c.emailActivo, true);
+  if (c.enviarSiempre !== undefined) cambios.enviarSiempre = comoBooleano(c.enviarSiempre);
+  if (c.respaldoSemanal !== undefined) cambios.respaldoSemanal = comoBooleano(c.respaldoSemanal, true);
+  if (c.diasAviso !== undefined) {
+    const dias = Number(c.diasAviso);
+    cambios.diasAviso = Number.isInteger(dias) && dias >= 0 && dias <= 15 ? dias : 3;
   }
-}
-
-export async function PUT(request: Request) {
-  try {
-    const cuerpo = await leerJson(request);
-    const cambios: Partial<Ajustes> = {};
-
-    if (cuerpo.ingresoMensual !== undefined) {
-      cambios.ingresoMensual = comoMonto(cuerpo.ingresoMensual, "ingreso mensual", true);
-    }
-    if (cuerpo.metaAhorro !== undefined) {
-      cambios.metaAhorro = comoMonto(cuerpo.metaAhorro, "meta de ahorro", true);
-    }
-    if (cuerpo.metaNombre !== undefined) {
-      cambios.metaNombre = comoTexto(cuerpo.metaNombre, "nombre de la meta", 60);
-    }
-    if (cuerpo.metaFechaLimite !== undefined) {
-      cambios.metaFechaLimite = esFechaValida(cuerpo.metaFechaLimite)
-        ? cuerpo.metaFechaLimite
-        : null;
-    }
-    if (cuerpo.email !== undefined) cambios.email = comoEmail(cuerpo.email, false);
-    if (cuerpo.emailActivo !== undefined) {
-      cambios.emailActivo = comoBooleano(cuerpo.emailActivo, true);
-    }
-    if (cuerpo.enviarSiempre !== undefined) {
-      cambios.enviarSiempre = comoBooleano(cuerpo.enviarSiempre, false);
-    }
-    if (cuerpo.diasAviso !== undefined) {
-      const dias = Number(cuerpo.diasAviso);
-      cambios.diasAviso = Number.isInteger(dias) && dias >= 0 && dias <= 15 ? dias : 3;
-    }
-
-    return Response.json({ ajustes: await guardarAjustes(cambios) });
-  } catch (error) {
-    return respuestaError(error);
-  }
-}
+  return Response.json({ ajustes: await guardarAjustes(cambios) });
+});

@@ -1,101 +1,61 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { construirCorreoDiario } from "../src/lib/email/plantilla";
-import { calcularRecordatorios, recordatoriosParaAvisar } from "../src/lib/finanzas";
-import type { Recordatorio, Resumen } from "../src/lib/types";
+import { componerResumen, recordatoriosParaAvisar } from "../src/lib/finanzas";
+import { entrada, meta, movimiento, recordatorio } from "./fabricas";
 
-const resumen: Resumen = {
-  mes: "2026-09",
-  ingresoBase: 2_000_000,
-  ingresosExtra: 0,
-  ingresoTotal: 2_000_000,
-  gastado: 1_200_000,
-  ahorradoMes: 300_000,
-  disponible: 500_000,
-  ahorroTotal: 4_000_000,
-  metaAhorro: 20_000_000,
-  metaNombre: "Moto nueva",
-  progresoMeta: 20,
-  mesesRestantes: 32,
-  mesesHastaLimite: null,
-  cuotaSugerida: null,
-  promedioAhorroMensual: 500_000,
-  categorias: [],
-  tendencia: [],
-  movimientos: [],
-  recordatorios: [],
-  ajustes: {
-    ingresoMensual: 2_000_000,
-    metaAhorro: 20_000_000,
-    metaNombre: "Moto nueva",
-    metaFechaLimite: null,
-    email: "yo@ejemplo.com",
-    emailActivo: true,
-    enviarSiempre: false,
-    diasAviso: 3,
-    actualizadoEn: "2026-09-01T00:00:00.000Z",
-  },
-  consejos: ["Aparta el ahorro apenas te paguen."],
-};
-
-function recordatorio(parcial: Partial<Recordatorio>): Recordatorio {
-  return {
-    id: "1",
-    titulo: "Arriendo",
-    dia: 22,
-    categoria: "",
-    montoEstimado: 900_000,
-    activo: true,
-    pagados: [],
-    creadoEn: "2026-01-01T00:00:00.000Z",
-    ...parcial,
-  };
+function correo(parcial: Parameters<typeof entrada>[0] = {}, conRespaldo = false) {
+  const resumen = componerResumen(entrada(parcial));
+  const avisos = recordatoriosParaAvisar(resumen.recordatorios, 3);
+  return construirCorreoDiario({ resumen, avisos, hoy: "2026-09-21", urlApp: "https://app.test", conRespaldo });
 }
 
-describe("construirCorreoDiario", () => {
-  const avisos = recordatoriosParaAvisar(
-    calcularRecordatorios([recordatorio({})], [], "2026-09-21"),
-    3,
-  );
-
-  it("resume los pendientes en el asunto", () => {
-    const correo = construirCorreoDiario(resumen, avisos, "2026-09-21", "https://app.test");
-    assert.match(correo.asunto, /1 pago pendiente/);
+describe("correo diario", () => {
+  it("abre con lo que se puede gastar por día, no con el ingreso", () => {
+    const c = correo();
+    assert.match(c.asunto, /por día/);
+    assert.match(c.texto.split("\n")[2], /por día/);
   });
 
-  it("cambia el asunto cuando no hay pendientes", () => {
-    const correo = construirCorreoDiario(resumen, [], "2026-09-21", "https://app.test");
-    assert.match(correo.asunto, /resumen de septiembre 2026/);
-    assert.match(correo.html, /No tienes pagos pendientes/);
+  it("descuenta en el desglose los pagos fijos pendientes", () => {
+    const c = correo({ recordatorios: [recordatorio({ titulo: "Plan celular", dia: 28, montoEstimado: 54_900 })] });
+    assert.match(c.texto, /Pagos fijos pendientes: − \$\s?54\.900/);
   });
 
-  it("incluye las cifras del mes en la versión de texto", () => {
-    const correo = construirCorreoDiario(resumen, avisos, "2026-09-21", "https://app.test");
-    assert.match(correo.texto, /Gastado/);
-    assert.match(correo.texto, /https:\/\/app\.test/);
+  it("cuando no alcanza, lo dice en el asunto y en el titular", () => {
+    const c = correo({ movimientosMes: [movimiento({ monto: 2_500_000 })] });
+    assert.match(c.asunto, /te faltan/);
+    assert.match(c.html, /Te faltan/);
   });
 
-  it("escapa el HTML que venga de los títulos del usuario", () => {
-    const peligroso = recordatoriosParaAvisar(
-      calcularRecordatorios(
-        [recordatorio({ titulo: '<img src=x onerror="alert(1)">' })],
-        [],
-        "2026-09-21",
-      ),
-      3,
-    );
-    const correo = construirCorreoDiario(resumen, peligroso, "2026-09-21", "https://app.test");
-    assert.ok(!correo.html.includes("<img src=x"));
-    assert.ok(correo.html.includes("&lt;img src=x"));
+  it("destaca los pagos vencidos", () => {
+    const c = correo({ recordatorios: [recordatorio({ titulo: "Arriendo", dia: 5 })] });
+    assert.match(c.asunto, /1 pago vencido/);
+    assert.match(c.texto, /Vencido hace 16 días/);
   });
 
-  it("omite el bloque de meta cuando no hay meta definida", () => {
-    const correo = construirCorreoDiario(
-      { ...resumen, metaAhorro: 0 },
-      avisos,
-      "2026-09-21",
-      "https://app.test",
-    );
-    assert.ok(!correo.html.includes("Moto nueva"));
+  it("no repite en 'Para revisar' lo que ya dicen el titular y la lista de pagos", () => {
+    const c = correo({
+      movimientosMes: [movimiento({ monto: 2_500_000 })],
+      recordatorios: [recordatorio({ dia: 5 })],
+    });
+    assert.ok(!/Para revisar:[\s\S]*venció/.test(c.texto));
+    assert.ok(!/Para revisar:[\s\S]*te faltan/.test(c.texto));
+  });
+
+  it("menciona el respaldo solo cuando va adjunto", () => {
+    assert.ok(!/respaldo/.test(correo().texto));
+    assert.match(correo({}, true).texto, /respaldo semanal/);
+  });
+
+  it("muestra las metas con su progreso", () => {
+    const c = correo({ metas: [meta({ nombre: "Moto nueva" })] });
+    assert.match(c.texto, /Moto nueva: \$\s?0 de \$\s?20\.000\.000 \(0%\)/);
+  });
+
+  it("escapa el HTML de los títulos del usuario", () => {
+    const c = correo({ recordatorios: [recordatorio({ titulo: '<img src=x onerror="alert(1)">', dia: 22 })] });
+    assert.ok(!c.html.includes("<img src=x"));
+    assert.ok(c.html.includes("&lt;img src=x"));
   });
 });

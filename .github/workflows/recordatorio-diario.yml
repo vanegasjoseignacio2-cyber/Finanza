@@ -12,8 +12,9 @@ name: Recordatorio diario
 
 on:
   schedule:
-    # 12:00 UTC = 7:00 a. m. en Colombia. GitHub puede retrasarlo unos minutos.
-    - cron: "0 12 * * *"
+    # 12:15 UTC: un cuarto de hora después del cron de Vercel, como respaldo.
+    # Si ambos llegan a correr, la reserva atómica del día evita el duplicado.
+    - cron: "15 12 * * *"
   workflow_dispatch:
 
 jobs:
