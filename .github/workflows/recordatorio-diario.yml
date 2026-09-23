@@ -28,9 +28,12 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           set -euo pipefail
+          # Sin secretos, este respaldo del cron no está configurado todavía (por
+          # ejemplo, antes de desplegar): se avisa sin marcar el flujo como fallido.
+          # Con secretos, cualquier fallo del disparo sí es un error.
           if [ -z "${APP_URL}" ] || [ -z "${CRON_SECRET}" ]; then
-            echo "Faltan los secretos APP_URL o CRON_SECRET en el repositorio."
-            exit 1
+            echo "::warning::Sin los secretos APP_URL y CRON_SECRET: este disparo de respaldo no está configurado y se omite."
+            exit 0
           fi
 
           for intento in 1 2 3; do
