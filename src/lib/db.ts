@@ -70,6 +70,8 @@ export type CategoriaDoc = Omit<CategoriaPersonal, "id"> & { _id: string };
 /** Ajustes más los campos del modelo anterior, que se migran al leer. */
 export interface AjustesDoc extends Partial<Ajustes> {
   _id: string;
+  /** Último mes (YYYY-MM) cuyo sueldo se registró solo: evita duplicarlo. */
+  sueldoAcreditado?: string;
   // Legado
   ingresoMensual?: number;
   metaAhorro?: number;

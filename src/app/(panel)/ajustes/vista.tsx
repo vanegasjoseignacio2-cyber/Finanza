@@ -32,7 +32,7 @@ export function VistaAjustes({
     <div className="flex flex-col gap-4 sm:gap-5">
       <Cabecera titulo="Ajustes" subtitulo="Sueldo, cuentas, categorías, el correo diario y tu seguridad." />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <SeccionSueldo sueldos={ajustes.sueldos} />
+        <SeccionSueldo sueldos={ajustes.sueldos} diaSueldo={ajustes.diaSueldo} />
         <SeccionCuentas cuentas={cuentas} />
       </div>
       <SeccionCorreo ajustes={ajustes} envios={envios} diagnostico={diagnostico} />

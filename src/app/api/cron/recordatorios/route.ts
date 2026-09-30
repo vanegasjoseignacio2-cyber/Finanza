@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import { consumirLimite } from "@/lib/datos";
+import { acreditarSueldoSiToca, consumirLimite } from "@/lib/datos";
 import { ejecutarRecordatorioDiario } from "@/lib/recordatorio-diario";
 import { respuestaLimite } from "@/lib/seguridad";
 import { respuestaError } from "@/lib/validacion";
@@ -36,10 +36,15 @@ async function manejar(request: Request): Promise<Response> {
   }
 
   try {
+    // El sueldo se registra solo el día que llega, aunque el correo esté apagado.
+    const sueldo = await acreditarSueldoSiToca().catch((error) => ({
+      acreditado: false,
+      motivo: error instanceof Error ? error.message : "No se pudo registrar el sueldo.",
+    }));
     const resultado = await ejecutarRecordatorioDiario({
       urlApp: process.env.APP_URL || new URL(request.url).origin,
     });
-    return Response.json(resultado, { status: resultado.error ? 502 : 200 });
+    return Response.json({ ...resultado, sueldo }, { status: resultado.error ? 502 : 200 });
   } catch (error) {
     return respuestaError(error);
   }

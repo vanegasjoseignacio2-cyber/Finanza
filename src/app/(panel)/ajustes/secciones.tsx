@@ -65,7 +65,7 @@ const botonIcono =
 
 /* ─── Sueldo ─────────────────────────────────────────────────────────────── */
 
-export function SeccionSueldo({ sueldos }: { sueldos: TramoSueldo[] }) {
+export function SeccionSueldo({ sueldos, diaSueldo }: { sueldos: TramoSueldo[]; diaSueldo: number | null }) {
   const [quitandoTramo, setQuitandoTramo] = useState<string | null>(null);
   const { ocupado, ejecutar } = useAccion();
   const hoy = mesActual();
@@ -73,6 +73,8 @@ export function SeccionSueldo({ sueldos }: { sueldos: TramoSueldo[] }) {
   const [monto, setMonto] = useState<number | null>(vigente || null);
   const [desde, setDesde] = useState(hoy);
   const [error, setError] = useState("");
+  const [dia, setDia] = useState(diaSueldo ? String(diaSueldo) : "");
+  const [errorDia, setErrorDia] = useState("");
 
   async function guardar(evento: FormEvent) {
     evento.preventDefault();
@@ -82,6 +84,18 @@ export function SeccionSueldo({ sueldos }: { sueldos: TramoSueldo[] }) {
       "guardar",
       () => peticion("/api/ajustes/sueldo", { method: "POST", body: JSON.stringify({ monto, desde }) }),
       `Sueldo de ${pesos(monto)} desde ${nombreMes(desde)}.`,
+    );
+  }
+
+  async function guardarDia(evento: FormEvent) {
+    evento.preventDefault();
+    const n = Number(dia);
+    if (dia !== "" && (!Number.isInteger(n) || n < 1 || n > 31)) return setErrorDia("El día debe estar entre 1 y 31.");
+    setErrorDia("");
+    await ejecutar(
+      "dia",
+      () => peticion("/api/ajustes", { method: "PUT", body: JSON.stringify({ diaSueldo: dia === "" ? null : n }) }),
+      dia === "" ? "Listo: el sueldo ya no se registra solo." : `Listo: el sueldo se registrará solo el día ${n} de cada mes.`,
     );
   }
 
@@ -108,6 +122,28 @@ export function SeccionSueldo({ sueldos }: { sueldos: TramoSueldo[] }) {
         />
         <Boton type="submit" cargando={ocupado === "guardar"}>
           Guardar
+        </Boton>
+      </form>
+
+      <form onSubmit={guardarDia} className="mt-5 grid grid-cols-1 gap-3 border-t border-borde-suave pt-4 sm:grid-cols-[1fr_auto] sm:items-end">
+        <Campo
+          etiqueta="Día del mes en que te llega"
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={31}
+          value={dia}
+          onChange={(e) => setDia(e.target.value)}
+          placeholder="Ej. 15"
+          error={errorDia || undefined}
+          ayuda={
+            diaSueldo
+              ? `Ese día la app registra sola el ingreso de ${vigente > 0 ? pesos(vigente) : "tu sueldo"}. Déjalo vacío para registrarlo tú.`
+              : "Opcional. Ese día la app registrará sola el ingreso del sueldo, sin que tengas que anotarlo."
+          }
+        />
+        <Boton type="submit" variante="secundario" cargando={ocupado === "dia"}>
+          Guardar día
         </Boton>
       </form>
 

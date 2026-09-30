@@ -13,10 +13,11 @@ import {
   type PortadaDoc,
   type RecordatorioDoc,
 } from "./db";
-import { hoyISO, mesActual, sumarMeses } from "./fechas";
+import { diasDelMes, hoyISO, mesActual, sumarMeses } from "./fechas";
 import {
   componerResumen,
   cuentaPrincipal,
+  sueldoPara,
   type FilaMensual,
   type SumaAgrupada,
 } from "./finanzas";
@@ -57,6 +58,7 @@ export const AJUSTES_POR_DEFECTO: Omit<Ajustes, "actualizadoEn"> = {
   sueldos: [],
   email: process.env.REMINDER_EMAIL ?? "",
   emailActivo: true,
+  diaSueldo: null,
   diasAviso: 3,
   respaldoSemanal: true,
 };
@@ -75,6 +77,7 @@ function normalizarAjustes(doc: AjustesDoc | null): Ajustes {
     sueldos,
     email: doc?.email ?? AJUSTES_POR_DEFECTO.email,
     emailActivo: doc?.emailActivo ?? AJUSTES_POR_DEFECTO.emailActivo,
+    diaSueldo: doc?.diaSueldo ?? AJUSTES_POR_DEFECTO.diaSueldo,
     diasAviso: doc?.diasAviso ?? AJUSTES_POR_DEFECTO.diasAviso,
     respaldoSemanal: doc?.respaldoSemanal ?? AJUSTES_POR_DEFECTO.respaldoSemanal,
     actualizadoEn: doc?.actualizadoEn ?? ahora(),
@@ -86,7 +89,7 @@ export async function obtenerAjustes(): Promise<Ajustes> {
 }
 
 export async function guardarAjustes(
-  parcial: Partial<Pick<Ajustes, "email" | "emailActivo" | "diasAviso" | "respaldoSemanal">>,
+  parcial: Partial<Pick<Ajustes, "email" | "emailActivo" | "diaSueldo" | "diasAviso" | "respaldoSemanal">>,
 ): Promise<Ajustes> {
   await (await colecciones.ajustes()).updateOne(
     { _id: AJUSTES_ID },
@@ -94,6 +97,55 @@ export async function guardarAjustes(
     { upsert: true },
   );
   return obtenerAjustes();
+}
+
+export interface ResultadoSueldo {
+  acreditado: boolean;
+  motivo?: string;
+  fecha?: string;
+  monto?: number;
+}
+
+/**
+ * Registra solo el sueldo del mes cuando llega su día. Sirve igual el día
+ * exacto que los siguientes (si falló el cron, o se configuró tarde): el ingreso
+ * queda con la fecha del día de pago. Es seguro llamarlo muchas veces: el mes se
+ * reserva de forma atómica y solo una llamada crea el ingreso. Si ya hay un
+ * sueldo registrado a mano este mes, no duplica. Si lo borras, no vuelve a
+ * crearse ese mes.
+ */
+export async function acreditarSueldoSiToca(hoy = hoyISO()): Promise<ResultadoSueldo> {
+  const ajustes = await obtenerAjustes();
+  if (!ajustes.diaSueldo) return { acreditado: false, motivo: "No hay un día de sueldo configurado." };
+
+  const mes = hoy.slice(0, 7);
+  const dia = Math.min(ajustes.diaSueldo, diasDelMes(mes));
+  if (Number(hoy.slice(8, 10)) < dia) return { acreditado: false, motivo: "Todavía no llega el día del sueldo." };
+
+  const monto = sueldoPara(ajustes.sueldos, mes);
+  if (monto <= 0) return { acreditado: false, motivo: "No hay un sueldo definido para este mes." };
+
+  const ingresos = await colecciones.movimientos();
+  if (await ingresos.countDocuments({ mes, tipo: "ingreso", categoria: "sueldo" })) {
+    return { acreditado: false, motivo: "El sueldo de este mes ya está registrado." };
+  }
+
+  const ajustesCol = await colecciones.ajustes();
+  const reserva = await ajustesCol.updateOne(
+    { _id: AJUSTES_ID, sueldoAcreditado: { $ne: mes } },
+    { $set: { sueldoAcreditado: mes } },
+  );
+  if (reserva.modifiedCount === 0) return { acreditado: false, motivo: "El sueldo de este mes ya se registró." };
+
+  const fecha = `${mes}-${String(dia).padStart(2, "0")}`;
+  try {
+    await crearMovimiento({ tipo: "ingreso", categoria: "sueldo", monto, fecha, nota: "Sueldo (automático)" });
+  } catch (error) {
+    // Sin ingreso creado, el mes no puede quedar reservado.
+    await ajustesCol.updateOne({ _id: AJUSTES_ID }, { $unset: { sueldoAcreditado: "" } });
+    throw error;
+  }
+  return { acreditado: true, fecha, monto };
 }
 
 async function guardarSueldos(sueldos: TramoSueldo[]): Promise<Ajustes> {

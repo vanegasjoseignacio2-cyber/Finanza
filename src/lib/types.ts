@@ -139,6 +139,8 @@ export interface Ajustes {
   sueldos: TramoSueldo[];
   email: string;
   emailActivo: boolean;
+  /** Día del mes (1-31) en que llega el sueldo y se registra solo. null = se registra a mano. */
+  diaSueldo: number | null;
   diasAviso: number;
   respaldoSemanal: boolean;
   actualizadoEn: string;

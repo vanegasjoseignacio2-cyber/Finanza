@@ -70,6 +70,7 @@ export function ajustes(parcial: Partial<Ajustes> = {}): Ajustes {
     sueldos: [{ desde: "2020-01", monto: 2_000_000 }],
     email: "yo@ejemplo.com",
     emailActivo: true,
+    diaSueldo: null,
     diasAviso: 3,
     respaldoSemanal: true,
     actualizadoEn: "2026-09-01T00:00:00.000Z",

@@ -251,6 +251,62 @@ describe("capa de datos contra MongoDB", { skip: omitir }, () => {
     assert.equal(unico.desde, null);
   });
 
+  describe("sueldo automático", () => {
+    async function configurar(dia: number | null, monto = 2_000_000) {
+      await datos.fijarSueldo("2020-01", monto);
+      await datos.guardarAjustes({ diaSueldo: dia });
+    }
+    const sueldos = async (mes: string) =>
+      (await datos.listarMovimientos({ mes })).filter((m) => m.tipo === "ingreso" && m.categoria === "sueldo");
+
+    it("no hace nada sin día configurado ni antes de que llegue", async () => {
+      await configurar(null);
+      assert.equal((await datos.acreditarSueldoSiToca("2026-09-15")).acreditado, false);
+      await configurar(15);
+      assert.equal((await datos.acreditarSueldoSiToca("2026-09-14")).acreditado, false);
+      assert.equal((await sueldos("2026-09")).length, 0);
+    });
+
+    it("el día del sueldo crea el ingreso una sola vez, aunque lleguen llamadas a la vez", async () => {
+      await configurar(15);
+      const r = await Promise.all(Array.from({ length: 6 }, () => datos.acreditarSueldoSiToca("2026-09-15")));
+      assert.equal(r.filter((x) => x.acreditado).length, 1);
+      const [ingreso] = await sueldos("2026-09");
+      assert.equal(ingreso.monto, 2_000_000);
+      assert.equal(ingreso.fecha, "2026-09-15");
+      assert.equal((await datos.acreditarSueldoSiToca("2026-09-20")).acreditado, false);
+      assert.equal((await sueldos("2026-09")).length, 1);
+    });
+
+    it("si se configura tarde, el ingreso queda con la fecha del día de pago", async () => {
+      await configurar(5);
+      const r = await datos.acreditarSueldoSiToca("2026-09-30");
+      assert.equal(r.acreditado, true);
+      assert.equal((await sueldos("2026-09"))[0].fecha, "2026-09-05");
+    });
+
+    it("cada mes se registra el suyo, y un día 31 cae el último día de un mes corto", async () => {
+      await configurar(31);
+      await datos.acreditarSueldoSiToca("2026-09-30");
+      await datos.acreditarSueldoSiToca("2026-10-31");
+      assert.equal((await sueldos("2026-09"))[0].fecha, "2026-09-30");
+      assert.equal((await sueldos("2026-10"))[0].fecha, "2026-10-31");
+    });
+
+    it("no duplica un sueldo registrado a mano ni reaparece si lo borras", async () => {
+      await configurar(10);
+      await datos.crearMovimiento({ tipo: "ingreso", categoria: "sueldo", monto: 1_900_000, fecha: "2026-09-09", nota: "a mano" });
+      assert.equal((await datos.acreditarSueldoSiToca("2026-09-20")).acreditado, false);
+      assert.equal((await sueldos("2026-09")).length, 1);
+
+      await datos.acreditarSueldoSiToca("2026-10-12");
+      const [auto] = await sueldos("2026-10");
+      await datos.eliminarMovimiento(auto.id);
+      assert.equal((await datos.acreditarSueldoSiToca("2026-10-13")).acreditado, false);
+      assert.equal((await sueldos("2026-10")).length, 0);
+    });
+  });
+
   it("cambiar la clave sube la versión de sesión y solo existe el usuario registrado", async () => {
     assert.equal(await datos.buscarUsuario("nadie@ejemplo.com"), null);
     await (await db.colecciones.usuarios()).insertOne({
