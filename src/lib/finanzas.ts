@@ -102,6 +102,21 @@ export function calcularRecordatorios(
     .filter((r) => r.fecha === null || r.fecha.slice(0, 7) >= mes)
     .map((r) => {
       if (r.fecha !== null) return calcularProgramado(r, movimientosDelMes, hoy);
+      if (r.desde && mes < r.desde) {
+        // Todavía no empieza: su primer vencimiento es en el mes de inicio y
+        // hasta entonces no está vencido ni descuenta de lo libre.
+        const primero = `${r.desde}-${String(Math.min(r.dia, diasDelMes(r.desde))).padStart(2, "0")}`;
+        return {
+          ...r,
+          pagado: false,
+          pagoMovimientoId: null,
+          montoPagado: null,
+          vencimiento: primero,
+          diasFaltantes: diasEntre(hoy, primero),
+          vencido: false,
+          esteMes: false,
+        };
+      }
       const pago = pagoVinculado(r.id, mes, movimientosDelMes);
       const pagado = pago !== null || r.pagados.includes(mes);
       const vencimientoEsteMes = `${mes}-${String(Math.min(r.dia, diasDelMes(mes))).padStart(2, "0")}`;

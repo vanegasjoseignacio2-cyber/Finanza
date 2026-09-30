@@ -242,6 +242,15 @@ describe("capa de datos contra MongoDB", { skip: omitir }, () => {
     assert.equal((await datos.consumirLimite("otro", 5, 60_000)).permitido, true);
   });
 
+  it("guarda el mes de inicio de un pago fijo y lo ignora en los de una sola vez", async () => {
+    const mensual = await datos.crearRecordatorio({ titulo: "Arriendo", dia: 7, categoria: "", montoEstimado: 500_000, desde: "2026-10" });
+    assert.equal(mensual.desde, "2026-10");
+    assert.equal((await datos.listarRecordatorios())[0].desde, "2026-10");
+    assert.equal((await datos.actualizarRecordatorio(mensual.id, { desde: null })).desde, null);
+    const unico = await datos.crearRecordatorio({ titulo: "SOAT", dia: 20, categoria: "", montoEstimado: 0, fecha: "2026-11-20", desde: "2026-10" });
+    assert.equal(unico.desde, null);
+  });
+
   it("cambiar la clave sube la versión de sesión y solo existe el usuario registrado", async () => {
     assert.equal(await datos.buscarUsuario("nadie@ejemplo.com"), null);
     await (await db.colecciones.usuarios()).insertOne({

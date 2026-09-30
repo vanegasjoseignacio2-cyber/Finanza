@@ -31,6 +31,7 @@ export const PATCH = protegido<Ctx>(async (request, { params }) => {
     cambios.fecha = comoFechaOpcional(c.fecha);
     if (cambios.fecha) cambios.dia = Number(cambios.fecha.slice(8, 10));
   }
+  if (c.desde !== undefined) cambios.desde = c.desde ? comoMes(c.desde) : null;
   if (c.montoEstimado !== undefined) cambios.montoEstimado = comoMonto(c.montoEstimado, "monto estimado", true);
   if (c.categoria !== undefined) cambios.categoria = typeof c.categoria === "string" ? c.categoria : "";
   if (c.activo !== undefined) cambios.activo = comoBooleano(c.activo, true);

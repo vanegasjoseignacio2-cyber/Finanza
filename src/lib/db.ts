@@ -34,6 +34,7 @@ export interface RecordatorioDoc {
   activo: boolean;
   pagados: string[];
   fecha?: string | null;
+  desde?: string | null;
   creadoEn: string;
 }
 

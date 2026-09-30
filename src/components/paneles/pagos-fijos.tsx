@@ -25,7 +25,7 @@ import { Vacio } from "@/components/ui/tarjeta";
 import { Tooltip } from "@/components/ui/tooltip";
 import { peticion } from "@/lib/cliente";
 import { pesos } from "@/lib/dinero";
-import { fechaCorta, hoyISO } from "@/lib/fechas";
+import { fechaCorta, hoyISO, nombreMes, proximoVencimiento } from "@/lib/fechas";
 import type { RecordatorioCalculado } from "@/lib/types";
 
 /* ─── Estado visible de un pago ──────────────────────────────────────────── */
@@ -33,6 +33,9 @@ import type { RecordatorioCalculado } from "@/lib/types";
 function estado(r: RecordatorioCalculado) {
   if (!r.activo) return { texto: "En pausa", clase: "border-borde text-tinta-3", Icono: BellOff };
   if (r.pagado) return { texto: "Pagado", clase: "border-verde/40 text-verde", Icono: CircleCheck };
+  if (!r.esteMes && r.fecha === null && r.desde) {
+    return { texto: `Empieza en ${nombreMes(r.desde)}`, clase: "border-borde text-tinta-3", Icono: CalendarClock };
+  }
   if (r.vencido) {
     const d = Math.abs(r.diasFaltantes);
     return { texto: `Vencido hace ${d} ${d === 1 ? "día" : "días"}`, clase: "border-alerta/50 text-alerta", Icono: CircleAlert };
@@ -471,9 +474,16 @@ function FormularioPagoFijo({
   const [fecha, setFecha] = useState(r?.fecha ?? fechaInicial ?? hoy);
   const [monto, setMonto] = useState<number | null>(r?.montoEstimado || null);
   const [categoria, setCategoria] = useState(r?.categoria ?? "");
+  // Al crear, se sugiere el mes en que cae el próximo pago: si el día de este
+  // mes ya pasó, empieza el mes que viene (así no nace "vencido"). Al editar,
+  // se respeta lo guardado y vacío significa "desde ya".
+  const [desdeElegido, setDesdeElegido] = useState<string | null>(r ? (r.desde ?? "") : null);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
   const unico = frecuencia === "unico";
+  const diaValido = Number.isInteger(Number(dia)) && Number(dia) >= 1 && Number(dia) <= 31;
+  const desde = desdeElegido ?? (diaValido ? proximoVencimiento(Number(dia), hoy).slice(0, 7) : hoy.slice(0, 7));
+  const yaPasoEsteMes = diaValido && Number(dia) < Number(hoy.slice(8, 10));
 
   async function guardar(evento: FormEvent) {
     evento.preventDefault();
@@ -491,6 +501,7 @@ function FormularioPagoFijo({
           titulo,
           dia: unico ? Number(fecha.slice(8, 10)) : diaNumero,
           fecha: unico ? fecha : null,
+          desde: unico ? null : desde,
           montoEstimado: monto ?? 0,
           categoria,
         }),
@@ -556,6 +567,20 @@ function FormularioPagoFijo({
           ayuda="Sin monto, lo libre no puede descontarlo."
         />
       </div>
+      {!unico && (
+        <Campo
+          etiqueta="Empieza en"
+          type="month"
+          value={desde}
+          min={r ? undefined : hoy.slice(0, 7)}
+          onChange={(e) => setDesdeElegido(e.target.value)}
+          ayuda={
+            yaPasoEsteMes && desde > hoy.slice(0, 7)
+              ? `El día ${Number(dia)} de ${nombreMes(hoy.slice(0, 7))} ya pasó, así que cuenta desde ${nombreMes(desde)}. Si aún no lo pagas este mes, elige ${nombreMes(hoy.slice(0, 7))}.`
+              : "Antes de ese mes no se marca como vencido ni descuenta de lo libre."
+          }
+        />
+      )}
       <Selector etiqueta="Categoría" value={categoria} onChange={(e) => setCategoria(e.target.value)}>
         <option value="">Sin categoría (se registra en Otros)</option>
         {catalogo.gasto.map((c) => (

@@ -551,6 +551,7 @@ function aRecordatorio(doc: RecordatorioDoc): Recordatorio {
     activo: doc.activo !== false,
     pagados: doc.pagados ?? [],
     fecha: doc.fecha ?? null,
+    desde: doc.desde ?? null,
     creadoEn: doc.creadoEn,
   };
 }
@@ -572,12 +573,14 @@ export async function crearRecordatorio(datos: {
   categoria: string;
   montoEstimado: number;
   fecha?: string | null;
+  desde?: string | null;
 }): Promise<Recordatorio> {
   await validarCategoriaRecordatorio(datos.categoria);
   const doc: RecordatorioDoc = {
     _id: new ObjectId(),
     ...datos,
     fecha: datos.fecha ?? null,
+    desde: datos.fecha ? null : (datos.desde ?? null),
     activo: true,
     pagados: [],
     creadoEn: ahora(),
@@ -588,7 +591,7 @@ export async function crearRecordatorio(datos: {
 
 export async function actualizarRecordatorio(
   id: string,
-  cambios: Partial<Pick<Recordatorio, "titulo" | "dia" | "categoria" | "montoEstimado" | "activo" | "fecha">>,
+  cambios: Partial<Pick<Recordatorio, "titulo" | "dia" | "categoria" | "montoEstimado" | "activo" | "fecha" | "desde">>,
 ): Promise<Recordatorio> {
   if (cambios.categoria !== undefined) await validarCategoriaRecordatorio(cambios.categoria);
   const doc = await (await colecciones.recordatorios()).findOneAndUpdate(

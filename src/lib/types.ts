@@ -64,6 +64,11 @@ export interface Recordatorio {
    * Solo cuenta en su mes; `dia` es el día de esta fecha. null = se repite cada mes.
    */
   fecha: string | null;
+  /**
+   * Mes (YYYY-MM) desde el que cuenta un pago que se repite cada mes. Antes de
+   * ese mes no está vencido ni descuenta de lo libre. null = cuenta desde ya.
+   */
+  desde: string | null;
   creadoEn: string;
 }
 

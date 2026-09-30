@@ -9,6 +9,7 @@ import {
   comoFecha,
   comoFechaOpcional,
   comoIdOpcional,
+  comoMes,
   comoMonto,
   comoTexto,
   comoTipo,
@@ -32,12 +33,15 @@ export function datosMovimiento(c: Record<string, unknown>): DatosMovimiento {
 export function datosRecordatorio(c: Record<string, unknown>) {
   // Con fecha es un gasto de una sola vez y el día sale de ella.
   const fecha = comoFechaOpcional(c.fecha);
+  const desde = c.desde === undefined || c.desde === null || c.desde === "" ? null : comoMes(c.desde);
   return {
     titulo: comoTexto(c.titulo, "nombre", 80),
     dia: fecha ? Number(fecha.slice(8, 10)) : comoDia(c.dia),
     fecha,
     categoria: typeof c.categoria === "string" ? c.categoria : "",
     montoEstimado: comoMonto(c.montoEstimado ?? 0, "monto estimado", true),
+    // El mes de inicio solo aplica a los pagos que se repiten.
+    desde: fecha ? null : desde,
   };
 }
 

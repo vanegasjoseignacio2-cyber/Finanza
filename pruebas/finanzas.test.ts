@@ -489,3 +489,43 @@ describe("gastos programados una sola vez (cumpleaños, aniversarios)", () => {
     assert.equal(recordatoriosParaAvisar(calcularRecordatorios([cumple], [], "2026-09-21"), 3).length, 0);
   });
 });
+
+describe("pagos fijos que empiezan en un mes", () => {
+  const hoy = "2026-09-30";
+  const arriendo = recordatorio({ titulo: "Arriendo", dia: 7, montoEstimado: 500_000, desde: "2026-10" });
+
+  it("antes de su mes de inicio no está vencido y su primer vencimiento es en ese mes", () => {
+    const [r] = calcularRecordatorios([arriendo], [], hoy);
+    assert.equal(r.vencido, false);
+    assert.equal(r.esteMes, false);
+    assert.equal(r.pagado, false);
+    assert.equal(r.vencimiento, "2026-10-07");
+    assert.equal(r.diasFaltantes, 7);
+  });
+
+  it("no descuenta de lo libre ni genera alerta de vencido", () => {
+    const resumen = componerResumen(entrada({ hoy, recordatorios: [arriendo] }));
+    assert.equal(resumen.fijosPendientes, 0);
+    assert.ok(!resumen.alertas.some((a) => a.clave === "vencidos"));
+  });
+
+  it("sin mes de inicio, el mismo arriendo sí cuenta como vencido y descuenta", () => {
+    const sinInicio = recordatorio({ titulo: "Arriendo", dia: 7, montoEstimado: 500_000 });
+    const resumen = componerResumen(entrada({ hoy, recordatorios: [sinInicio] }));
+    assert.equal(resumen.recordatorios[0].vencido, true);
+    assert.equal(resumen.fijosPendientes, 500_000);
+  });
+
+  it("cuando llega su mes, se comporta como cualquier pago fijo", () => {
+    const [r] = calcularRecordatorios([arriendo], [], "2026-10-09");
+    assert.equal(r.esteMes, true);
+    assert.equal(r.vencido, true);
+    assert.equal(r.vencimiento, "2026-10-07");
+  });
+
+  it("avisa por correo cuando se acerca, dentro del margen", () => {
+    const calculados = calcularRecordatorios([arriendo], [], "2026-10-06");
+    assert.equal(recordatoriosParaAvisar(calculados, 1).length, 1);
+    assert.equal(recordatoriosParaAvisar(calcularRecordatorios([arriendo], [], hoy), 1).length, 0);
+  });
+});
