@@ -98,7 +98,10 @@ export function calcularRecordatorios(
   const mes = hoy.slice(0, 7);
 
   return recordatorios
+    // Un gasto programado de un mes que ya pasó está cerrado: no se muestra.
+    .filter((r) => r.fecha === null || r.fecha.slice(0, 7) >= mes)
     .map((r) => {
+      if (r.fecha !== null) return calcularProgramado(r, movimientosDelMes, hoy);
       const pago = pagoVinculado(r.id, mes, movimientosDelMes);
       const pagado = pago !== null || r.pagados.includes(mes);
       const vencimientoEsteMes = `${mes}-${String(Math.min(r.dia, diasDelMes(mes))).padStart(2, "0")}`;
@@ -114,6 +117,7 @@ export function calcularRecordatorios(
         vencimiento,
         diasFaltantes,
         vencido: !pagado && r.activo && diasFaltantes < 0,
+        esteMes: true,
       };
     })
     .sort((a, b) => {
@@ -121,6 +125,30 @@ export function calcularRecordatorios(
       if (a.pagado !== b.pagado) return a.pagado ? 1 : -1;
       return a.diasFaltantes - b.diasFaltantes;
     });
+}
+
+/**
+ * Gasto programado una sola vez. Se da por pagado con la marca de su mes (que
+ * se pone también al registrar el pago, aunque se pague antes, p. ej. el regalo
+ * comprado con un mes de anticipación) o con un gasto vinculado este mes.
+ */
+function calcularProgramado(r: Recordatorio, movimientosDelMes: Movimiento[], hoy: string): RecordatorioCalculado {
+  const fecha = r.fecha as string;
+  const mesDelGasto = fecha.slice(0, 7);
+  const esteMes = mesDelGasto === hoy.slice(0, 7);
+  const pago = esteMes ? pagoVinculado(r.id, mesDelGasto, movimientosDelMes) : null;
+  const pagado = pago !== null || r.pagados.includes(mesDelGasto);
+  const diasFaltantes = diasEntre(hoy, fecha);
+  return {
+    ...r,
+    pagado,
+    pagoMovimientoId: pago?.id ?? null,
+    montoPagado: pago?.monto ?? null,
+    vencimiento: fecha,
+    diasFaltantes,
+    vencido: !pagado && r.activo && diasFaltantes < 0,
+    esteMes,
+  };
 }
 
 /** Pagos que merecen un correo: activos, sin pagar y dentro del margen (o vencidos). */
@@ -140,6 +168,7 @@ export function fijosPendientesDelMes(
   return recordatorios.filter(
     (r) =>
       r.activo &&
+      (r.fecha === null || r.fecha.slice(0, 7) === mes) &&
       !r.pagados.includes(mes) &&
       pagoVinculado(r.id, mes, movimientosDelMes) === null,
   );
@@ -381,7 +410,7 @@ export function componerResumen(e: EntradaResumen): Resumen {
   const recordatorios = calcularRecordatorios(e.recordatorios, movimientosDeHoy, e.hoy);
   let fijosPendientesLista: RecordatorioCalculado[] = [];
   if (momento === "actual") {
-    fijosPendientesLista = recordatorios.filter((r) => r.activo && !r.pagado);
+    fijosPendientesLista = recordatorios.filter((r) => r.esteMes && r.activo && !r.pagado);
   } else if (momento === "futuro") {
     const pendientes = new Set(
       fijosPendientesDelMes(e.recordatorios, e.mes, movs).map((r) => r.id),
@@ -399,14 +428,8 @@ export function componerResumen(e: EntradaResumen): Resumen {
       : momento === "futuro"
         ? diasDelMes(e.mes)
         : null;
-  const porDia = diasRestantes ? Math.max(0, Math.floor(libre / diasRestantes)) : null;
-
   const metas = calcularMetas(e.metas, e.sumas, movs, e.hoy);
   const cuotaMetasPendiente = momento === "actual" ? cuotaPendienteDelMes(metas) : 0;
-  const porDiaTrasMetas =
-    diasRestantes && cuotaMetasPendiente > 0
-      ? Math.max(0, Math.floor((libre - cuotaMetasPendiente) / diasRestantes))
-      : null;
 
   const presupuestos = calcularPresupuestos(e.presupuestos, movs);
 
@@ -425,9 +448,7 @@ export function componerResumen(e: EntradaResumen): Resumen {
     fijosSinMonto,
     libre,
     diasRestantes,
-    porDia,
     cuotaMetasPendiente,
-    porDiaTrasMetas,
     categorias: agruparPorCategoria(movs),
     presupuestos,
     tendencia: calcularTendencia(e.serie, e.mes, e.ajustes.sueldos),

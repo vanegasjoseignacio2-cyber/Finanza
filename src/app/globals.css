@@ -1,35 +1,42 @@
 @import "tailwindcss";
 
 /* ── Sistema de diseño ──────────────────────────────────────────────────────
-   Un solo tema: oscuro. Azul noche de fondo, superficies que se separan de
-   verdad (no solo por el borde) y un único acento sólido, el verde.
+   Un solo tema: oscuro, negro puro de fondo, superficies que se separan de
+   verdad (no solo por el borde).
+
+   El acento de marca (botón principal, logotipo, foco, estados activos de
+   navegación) es blanco con un leve degradado a gray-50, no un color.
+   El verde se reserva para lo positivo en cifras (ingresos, libre, pagado);
+   no se usa como acento de interfaz.
 
    Contraste medido (WCAG):
-   - tinta   sobre superficie-alta: 13:1
-   - tinta-2 sobre superficie-alta: 7.7:1
-   - tinta-3 sobre superficie-alta: 5.3:1  (antes 4.1:1, no pasaba AA)
-   - verde, azul, alerta y aviso superan 5.7:1 sobre cualquier superficie.
-
-   El degradado verde → azul es la firma de la marca: solo en el logotipo y en
-   el botón principal. Todo lo demás usa colores sólidos.
+   - tinta   sobre superficie-alta: 13.3:1
+   - tinta-2 sobre superficie-alta: 7.5:1
+   - tinta-3 sobre superficie-alta: 4.9:1  (pasa AA para texto normal, 4.5:1)
+   - verde, alerta y aviso superan 5.6:1 sobre cualquier superficie.
+   - borde de tarjeta sobre fondo: 2.5:1, para que la tarjeta se distinga
+     claramente del negro puro sin depender solo del cambio de superficie.
 */
 @theme {
-  --color-fondo: #050a14;
-  --color-fondo-alto: #0a1322;
-  --color-superficie: #111d31;
-  --color-superficie-alta: #182840;
-  --color-borde: #263a58;
-  --color-borde-suave: #1c2c46;
+  --color-fondo: #000000;
+  --color-fondo-alto: #0a0a0a;
+  --color-superficie: #1a1a1a;
+  --color-superficie-alta: #272727;
+  --color-borde: #4d4d4d;
+  --color-borde-suave: #333333;
 
-  --color-tinta: #e9eff8;
-  --color-tinta-2: #a9b8cc;
-  --color-tinta-3: #8a9bb4;
+  --color-tinta: #f2f2f2;
+  --color-tinta-2: #b8b8b8;
+  --color-tinta-3: #949494;
 
+  /* Acento de marca e interfaz: blanco, sin tinte de color. */
+  --color-acento: #ffffff;
+  --color-acento-hondo: #e5e7eb;
+
+  /* Reservado para lo positivo en cifras (ingresos, libre, pagado). */
   --color-verde: #34d399;
   --color-verde-hondo: #059669;
   --color-agua: #22d3ee;
-  --color-azul: #60a5fa;
-  --color-azul-hondo: #3b82f6;
 
   --color-alerta: #fb7185;
   --color-aviso: #fbbf24;
@@ -68,16 +75,16 @@ body::before {
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background: radial-gradient(70rem 36rem at 30% -12%, rgba(52, 211, 153, 0.07), transparent 65%);
+  background: radial-gradient(70rem 36rem at 30% -12%, rgba(255, 255, 255, 0.06), transparent 65%);
 }
 
 ::selection {
-  background: rgba(52, 211, 153, 0.28);
-  color: #f4fbff;
+  background: rgba(255, 255, 255, 0.25);
+  color: #04121c;
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-verde);
+  outline: 2px solid var(--color-acento);
   outline-offset: 2px;
   border-radius: 6px;
 }
@@ -104,15 +111,62 @@ body::before {
   }
 }
 
-/* Firma de la marca. Uso restringido: logotipo y botón principal. */
+/* Firma de la marca. Uso restringido: logotipo, botón principal y estados activos. */
 @utility degradado-marca {
-  background-image: linear-gradient(120deg, var(--color-verde) 0%, var(--color-agua) 55%, var(--color-azul) 100%);
+  background-image: linear-gradient(120deg, var(--color-acento) 0%, var(--color-acento-hondo) 100%);
 }
 
 @utility tarjeta {
   background-color: var(--color-superficie);
-  border: 1px solid var(--color-borde-suave);
+  border: 1px solid var(--color-borde);
   border-radius: var(--radius-xl2);
+}
+
+/* Interruptor: la perilla ocupa todo el riel y se desliza; al presionar se
+   centra un instante, como si se estirara. Encendido, el riel se pinta de azul. */
+.interruptor {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  /* El desplazamiento de la perilla es el ancho interior menos el alto
+     interior (38 − 18 = 20px): así asoma solo un círculo a cada lado. */
+  width: 44px;
+  height: 24px;
+  overflow: hidden;
+  border: 3px solid transparent;
+  border-radius: 12px;
+  background-color: var(--color-borde);
+  box-shadow: 0 0 6px 0 rgb(0 0 0 / 0.25) inset;
+  transition: background-color 0.3s;
+}
+
+.interruptor::before {
+  content: "";
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
+  background-color: #fff;
+  box-shadow: 0 0 6px 2px rgb(0 0 0 / 0.25);
+  transform: translateX(-20px);
+  transition: transform 0.3s;
+}
+
+.interruptor[data-activo="true"] {
+  background-color: #2196f3;
+}
+
+.interruptor[data-activo="true"]::before {
+  transform: translateX(20px);
+}
+
+:active > .interruptor::before {
+  transform: translateX(0);
+}
+
+:focus-visible > .interruptor {
+  outline: 2px solid var(--color-acento);
+  outline-offset: 2px;
 }
 
 @media (prefers-reduced-motion: reduce) {

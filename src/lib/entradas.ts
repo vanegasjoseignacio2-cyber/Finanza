@@ -30,9 +30,12 @@ export function datosMovimiento(c: Record<string, unknown>): DatosMovimiento {
 }
 
 export function datosRecordatorio(c: Record<string, unknown>) {
+  // Con fecha es un gasto de una sola vez y el día sale de ella.
+  const fecha = comoFechaOpcional(c.fecha);
   return {
     titulo: comoTexto(c.titulo, "nombre", 80),
-    dia: comoDia(c.dia),
+    dia: fecha ? Number(fecha.slice(8, 10)) : comoDia(c.dia),
+    fecha,
     categoria: typeof c.categoria === "string" ? c.categoria : "",
     montoEstimado: comoMonto(c.montoEstimado ?? 0, "monto estimado", true),
   };

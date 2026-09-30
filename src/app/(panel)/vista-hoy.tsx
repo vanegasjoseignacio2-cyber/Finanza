@@ -8,6 +8,7 @@ import { ListaAlertas } from "@/components/paneles/alertas";
 import { Barra } from "@/components/paneles/barra";
 import { ListaMovimientos } from "@/components/paneles/lista-movimientos";
 import { ListaPagosFijos } from "@/components/paneles/pagos-fijos";
+import { BannerProgramados } from "@/components/paneles/programados";
 import { Boton } from "@/components/ui/boton";
 import { Cifra } from "@/components/ui/cifra";
 import { Tarjeta } from "@/components/ui/tarjeta";
@@ -19,7 +20,7 @@ function VerTodo({ href, texto = "Ver todo" }: { href: string; texto?: string })
   return (
     <Link
       href={href}
-      className="area-toque -my-3 flex items-center gap-1 py-3 text-[12.5px] text-tinta-3 transition-colors hover:text-verde"
+      className="area-toque -my-3 flex items-center gap-1 py-3 text-[12.5px] text-tinta-3 transition-colors hover:text-tinta"
     >
       {texto}
       <ArrowRight className="size-3.5" aria-hidden="true" />
@@ -65,7 +66,6 @@ function Protagonista({ r }: { r: Resumen }) {
   const captura = useCaptura();
   const enRojo = r.libre < 0;
   const porcentajeLibre = r.ingresoTotal > 0 ? Math.round((Math.max(0, r.libre) / r.ingresoTotal) * 100) : 0;
-  const dias = r.diasRestantes ?? 0;
 
   const filas = [
     {
@@ -87,7 +87,7 @@ function Protagonista({ r }: { r: Resumen }) {
       className="tarjeta p-5 sm:p-7 lg:col-span-3"
     >
       <h2 id="titulo-libre" className="text-[12px] font-semibold tracking-[0.12em] text-tinta-3 uppercase">
-        {enRojo ? "Este mes no alcanza" : "Puedes gastar"}
+        {enRojo ? "Este mes no alcanza" : "Libre este mes"}
       </h2>
 
       {enRojo ? (
@@ -103,24 +103,12 @@ function Protagonista({ r }: { r: Resumen }) {
         </>
       ) : (
         <>
-          <p className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <Cifra
-              valor={r.porDia ?? 0}
-              className="font-display text-[clamp(2.4rem,9vw,3.6rem)] leading-none font-semibold text-tinta"
-            />
-            <span className="text-[16px] text-tinta-2">por día</span>
+          <p className="mt-2 font-display text-[clamp(2.4rem,9vw,3.6rem)] leading-none font-semibold text-acento">
+            {pesos(r.libre)}
           </p>
           <p className="mt-3 max-w-xl text-[14.5px] leading-relaxed text-tinta-2">
-            Te quedan <strong className="font-semibold text-verde">{pesos(r.libre)}</strong> libres para{" "}
-            {dias === 1 ? "hoy, el último día del mes" : `los próximos ${dias} días`}
-            {r.fijosPendientes > 0 ? `, ya descontados ${pesos(r.fijosPendientes)} en pagos fijos que faltan.` : "."}
+            {r.fijosPendientes > 0 ? `Ya descontados ${pesos(r.fijosPendientes)} en pagos fijos que faltan.` : "Nada pendiente por descontar."}
           </p>
-          {r.porDiaTrasMetas !== null && (
-            <p className="mt-1.5 max-w-xl text-[13.5px] leading-relaxed text-tinta-3">
-              Si además apartas los {pesos(r.cuotaMetasPendiente)} que tus metas piden este mes, serían{" "}
-              <span className="font-semibold text-tinta-2">{pesos(r.porDiaTrasMetas)}</span> por día.
-            </p>
-          )}
           <div className="mt-5 flex flex-col gap-1.5">
             <Barra
               porcentaje={porcentajeLibre}
@@ -144,19 +132,18 @@ function Protagonista({ r }: { r: Resumen }) {
         ))}
         <div className="mt-1.5 flex items-center justify-between gap-3 border-t border-borde-suave pt-2.5">
           <dt className="font-semibold text-tinta">Libre</dt>
-          <dd className={`font-semibold tabular ${enRojo ? "text-alerta" : "text-verde"}`}>{pesos(r.libre)}</dd>
+          <dd className={`font-semibold tabular ${enRojo ? "text-alerta" : "text-acento"}`}>{pesos(r.libre)}</dd>
         </div>
       </dl>
 
       {!r.sueldoRegistrado && r.sueldoEsperado > 0 && (
         <Boton
-          variante="secundario"
-          tamano="sm"
-          className="mt-4"
+          variante="primario"
+          className="mt-4 w-full sm:w-auto"
           onClick={() => captura.abrir({ tipo: "ingreso", categoria: "sueldo", monto: r.sueldoEsperado })}
         >
           <Wallet className="size-4" aria-hidden="true" />
-          Registrar el sueldo de este mes
+          Marcar que llegó el sueldo ({pesos(r.sueldoEsperado)})
         </Boton>
       )}
     </motion.section>
@@ -164,7 +151,9 @@ function Protagonista({ r }: { r: Resumen }) {
 }
 
 export function VistaHoy({ resumen: r }: { resumen: Resumen }) {
-  const pendientes = r.recordatorios.filter((x) => x.activo && !x.pagado);
+  // Los gastos de una sola vez van en su propio banner; aquí, los de cada mes.
+  const mensuales = r.recordatorios.filter((x) => x.fecha === null);
+  const pendientes = mensuales.filter((x) => x.activo && !x.pagado);
   const alertas = r.alertas.filter((a) => a.clave !== "libre").slice(0, 3);
   const [anio, mes, dia] = r.hoy.split("-").map(Number);
   const diaSemana = DIAS_SEMANA[new Date(Date.UTC(anio, mes - 1, dia)).getUTCDay()];
@@ -180,6 +169,8 @@ export function VistaHoy({ resumen: r }: { resumen: Resumen }) {
 
       <PrimerosPasos r={r} />
 
+      <BannerProgramados recordatorios={r.recordatorios} />
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
         <Protagonista r={r} />
 
@@ -187,15 +178,19 @@ export function VistaHoy({ resumen: r }: { resumen: Resumen }) {
           titulo="Pagos fijos del mes"
           className="lg:col-span-2"
           retraso={0.05}
-          accion={<VerTodo href="/presupuesto#pagos-fijos" />}
+          accion={<VerTodo href="/calendario" texto="Ver calendario" />}
         >
           {pendientes.length > 0 ? (
             <ListaPagosFijos recordatorios={pendientes} limite={5} />
-          ) : r.recordatorios.length > 0 ? (
-            <p className="flex items-center gap-2 text-[14px] text-tinta-2">
-              <Check className="size-4 text-verde" aria-hidden="true" />
-              Todos los pagos fijos del mes están al día.
-            </p>
+          ) : mensuales.length > 0 ? (
+            <>
+              <p className="mb-2 flex items-center gap-2 text-[14px] text-tinta-2">
+                <Check className="size-4 text-verde" aria-hidden="true" />
+                Todos los pagos fijos del mes están al día.
+              </p>
+              {/* Al día: igual se ve cuánto falta para el próximo de cada uno. */}
+              <ListaPagosFijos recordatorios={mensuales.filter((x) => x.activo)} limite={5} />
+            </>
           ) : (
             <ListaPagosFijos recordatorios={[]} />
           )}

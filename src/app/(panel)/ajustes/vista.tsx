@@ -19,12 +19,14 @@ export function VistaAjustes({
   categorias,
   envios,
   diagnostico,
+  correo,
 }: {
   ajustes: Ajustes;
   cuentas: CuentaConSaldo[];
   categorias: Categoria[];
   envios: Envio[];
   diagnostico: DiagnosticoCorreo;
+  correo: string;
 }) {
   return (
     <div className="flex flex-col gap-4 sm:gap-5">
@@ -36,7 +38,7 @@ export function VistaAjustes({
       <SeccionCorreo ajustes={ajustes} envios={envios} diagnostico={diagnostico} />
       <SeccionCategorias categorias={categorias} />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <SeccionSeguridad />
+        <SeccionSeguridad correo={correo} />
         <SeccionDatos />
       </div>
     </div>

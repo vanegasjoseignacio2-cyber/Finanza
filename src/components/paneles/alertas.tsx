@@ -4,7 +4,7 @@ import type { Alerta } from "@/lib/types";
 const ESTILO = {
   riesgo: { Icono: CircleAlert, clase: "text-alerta", borde: "border-l-alerta", nombre: "Urgente" },
   aviso: { Icono: TriangleAlert, clase: "text-aviso", borde: "border-l-aviso", nombre: "Atención" },
-  info: { Icono: Info, clase: "text-azul", borde: "border-l-azul", nombre: "Para saber" },
+  info: { Icono: Info, clase: "text-tinta-2", borde: "border-l-tinta-3", nombre: "Para saber" },
 } as const;
 
 export function ListaAlertas({ alertas }: { alertas: Alerta[] }) {

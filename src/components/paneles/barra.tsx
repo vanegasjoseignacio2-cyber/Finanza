@@ -3,10 +3,10 @@
 import { motion, useReducedMotion } from "framer-motion";
 
 const COLOR = {
-  normal: "bg-verde",
+  normal: "bg-acento",
   cerca: "bg-aviso",
   excedido: "bg-alerta",
-  neutro: "bg-azul-hondo",
+  neutro: "bg-tinta-3",
 } as const;
 
 /**

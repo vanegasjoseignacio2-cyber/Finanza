@@ -2,7 +2,7 @@
  * Lectura y escritura en MongoDB. Aquí no se calcula nada del dominio: se trae
  * lo necesario y se entrega a las funciones puras de `finanzas.ts`.
  */
-import { BSON, MongoServerError, ObjectId } from "mongodb";
+import { Binary, BSON, MongoServerError, ObjectId } from "mongodb";
 import { crearCatalogo, slugCategoria, type Catalogo } from "./categorias";
 import {
   colecciones,
@@ -10,6 +10,7 @@ import {
   type CuentaDoc,
   type MetaDoc,
   type MovimientoDoc,
+  type PortadaDoc,
   type RecordatorioDoc,
 } from "./db";
 import { hoyISO, mesActual, sumarMeses } from "./fechas";
@@ -27,6 +28,8 @@ import type {
   EstadoEnvio,
   Meta,
   Movimiento,
+  Portada,
+  Portadas,
   Presupuesto,
   Recordatorio,
   Resumen,
@@ -54,7 +57,6 @@ export const AJUSTES_POR_DEFECTO: Omit<Ajustes, "actualizadoEn"> = {
   sueldos: [],
   email: process.env.REMINDER_EMAIL ?? "",
   emailActivo: true,
-  enviarSiempre: false,
   diasAviso: 3,
   respaldoSemanal: true,
 };
@@ -73,7 +75,6 @@ function normalizarAjustes(doc: AjustesDoc | null): Ajustes {
     sueldos,
     email: doc?.email ?? AJUSTES_POR_DEFECTO.email,
     emailActivo: doc?.emailActivo ?? AJUSTES_POR_DEFECTO.emailActivo,
-    enviarSiempre: doc?.enviarSiempre ?? AJUSTES_POR_DEFECTO.enviarSiempre,
     diasAviso: doc?.diasAviso ?? AJUSTES_POR_DEFECTO.diasAviso,
     respaldoSemanal: doc?.respaldoSemanal ?? AJUSTES_POR_DEFECTO.respaldoSemanal,
     actualizadoEn: doc?.actualizadoEn ?? ahora(),
@@ -85,7 +86,7 @@ export async function obtenerAjustes(): Promise<Ajustes> {
 }
 
 export async function guardarAjustes(
-  parcial: Partial<Pick<Ajustes, "email" | "emailActivo" | "enviarSiempre" | "diasAviso" | "respaldoSemanal">>,
+  parcial: Partial<Pick<Ajustes, "email" | "emailActivo" | "diasAviso" | "respaldoSemanal">>,
 ): Promise<Ajustes> {
   await (await colecciones.ajustes()).updateOne(
     { _id: AJUSTES_ID },
@@ -119,27 +120,29 @@ export async function quitarTramoSueldo(desde: string): Promise<Ajustes> {
   return guardarSueldos(actuales.filter((t) => t.desde !== desde));
 }
 
-export interface Seguridad {
+export interface Usuario {
+  correo: string;
+  claveHash: string;
   sesionVersion: number;
-  claveHash: string | null;
 }
 
-export async function obtenerSeguridad(): Promise<Seguridad> {
-  const doc = await leerAjustesDoc();
-  return { sesionVersion: doc?.sesionVersion ?? 0, claveHash: doc?.claveHash ?? null };
+export async function buscarUsuario(correo: string): Promise<Usuario | null> {
+  const doc = await (await colecciones.usuarios()).findOne({ _id: correo.trim().toLowerCase() });
+  return doc ? { correo: doc._id, claveHash: doc.claveHash, sesionVersion: doc.sesionVersion } : null;
 }
 
-/** Invalida todas las sesiones abiertas. Devuelve la versión nueva. */
-export async function incrementarVersionSesion(claveHash?: string): Promise<number> {
-  const doc = await (await colecciones.ajustes()).findOneAndUpdate(
-    { _id: AJUSTES_ID },
-    {
-      $inc: { sesionVersion: 1 },
-      $set: { actualizadoEn: ahora(), ...(claveHash ? { claveHash } : {}) },
-    },
-    { upsert: true, returnDocument: "after" },
+/**
+ * Invalida todas las sesiones del usuario y, si se da, cambia su clave.
+ * Devuelve la versión nueva.
+ */
+export async function incrementarVersionSesion(correo: string, claveHash?: string): Promise<number> {
+  const doc = await (await colecciones.usuarios()).findOneAndUpdate(
+    { _id: correo.trim().toLowerCase() },
+    { $inc: { sesionVersion: 1 }, $set: { actualizadoEn: ahora(), ...(claveHash ? { claveHash } : {}) } },
+    { returnDocument: "after" },
   );
-  return doc?.sesionVersion ?? 1;
+  if (!doc) throw new ErrorNoEncontrado("El usuario ya no existe.");
+  return doc.sesionVersion;
 }
 
 /* ─── Categorías ─────────────────────────────────────────────────────────── */
@@ -547,6 +550,7 @@ function aRecordatorio(doc: RecordatorioDoc): Recordatorio {
     montoEstimado: doc.montoEstimado ?? 0,
     activo: doc.activo !== false,
     pagados: doc.pagados ?? [],
+    fecha: doc.fecha ?? null,
     creadoEn: doc.creadoEn,
   };
 }
@@ -567,11 +571,13 @@ export async function crearRecordatorio(datos: {
   dia: number;
   categoria: string;
   montoEstimado: number;
+  fecha?: string | null;
 }): Promise<Recordatorio> {
   await validarCategoriaRecordatorio(datos.categoria);
   const doc: RecordatorioDoc = {
     _id: new ObjectId(),
     ...datos,
+    fecha: datos.fecha ?? null,
     activo: true,
     pagados: [],
     creadoEn: ahora(),
@@ -582,7 +588,7 @@ export async function crearRecordatorio(datos: {
 
 export async function actualizarRecordatorio(
   id: string,
-  cambios: Partial<Pick<Recordatorio, "titulo" | "dia" | "categoria" | "montoEstimado" | "activo">>,
+  cambios: Partial<Pick<Recordatorio, "titulo" | "dia" | "categoria" | "montoEstimado" | "activo" | "fecha">>,
 ): Promise<Recordatorio> {
   if (cambios.categoria !== undefined) await validarCategoriaRecordatorio(cambios.categoria);
   const doc = await (await colecciones.recordatorios()).findOneAndUpdate(
@@ -594,10 +600,17 @@ export async function actualizarRecordatorio(
   return aRecordatorio(doc);
 }
 
-/** Marca o desmarca un mes como pagado sin registrar gasto. */
+/**
+ * Marca o desmarca un mes como pagado sin registrar gasto. En un gasto
+ * programado la marca siempre va a su propio mes, se pague cuando se pague.
+ */
 export async function marcarPagoManual(id: string, mes: string, pagado: boolean): Promise<Recordatorio> {
-  const doc = await (await colecciones.recordatorios()).findOneAndUpdate(
-    { _id: oid(id, "ese pago fijo") },
+  const col = await colecciones.recordatorios();
+  const actual = await col.findOne({ _id: oid(id, "ese pago fijo") }, { projection: { fecha: 1 } });
+  if (!actual) throw new ErrorNoEncontrado("No encontramos ese pago fijo.");
+  if (actual.fecha) mes = actual.fecha.slice(0, 7);
+  const doc = await col.findOneAndUpdate(
+    { _id: actual._id },
     pagado ? { $addToSet: { pagados: mes } } : { $pull: { pagados: mes } },
     { returnDocument: "after" },
   );
@@ -613,8 +626,10 @@ export async function pagarRecordatorio(
   const doc = await (await colecciones.recordatorios()).findOne({ _id: oid(id, "ese pago fijo") });
   if (!doc) throw new ErrorNoEncontrado("No encontramos ese pago fijo.");
   const mes = datos.fecha.slice(0, 7);
-  const yaPagado = await (await colecciones.movimientos()).countDocuments({ recurrenteId: id, mes });
-  if (yaPagado) throw new ErrorValidacion("Ese pago ya está registrado este mes.");
+  // Un gasto programado se paga una sola vez, en el mes que sea.
+  const yaPagado = await (await colecciones.movimientos()).countDocuments(doc.fecha ? { recurrenteId: id } : { recurrenteId: id, mes });
+  if (yaPagado) throw new ErrorValidacion(doc.fecha ? "Ese gasto ya está registrado." : "Ese pago ya está registrado este mes.");
+  if (doc.fecha) await marcarPagoManual(id, doc.fecha.slice(0, 7), true);
   return crearMovimiento({
     tipo: "gasto",
     categoria: doc.categoria || "otros",
@@ -628,8 +643,9 @@ export async function pagarRecordatorio(
 
 /** Deshace el pago de un mes: borra el gasto vinculado y la marca manual. */
 export async function deshacerPago(id: string, mes: string): Promise<void> {
+  const doc = await (await colecciones.recordatorios()).findOne({ _id: oid(id, "ese pago fijo") }, { projection: { fecha: 1 } });
   await Promise.all([
-    (await colecciones.movimientos()).deleteMany({ recurrenteId: id, mes }),
+    (await colecciones.movimientos()).deleteMany(doc?.fecha ? { recurrenteId: id } : { recurrenteId: id, mes }),
     marcarPagoManual(id, mes, false),
   ]);
 }
@@ -809,6 +825,40 @@ export async function limpiarIntentos(clave: string): Promise<void> {
   await (await colecciones.intentos()).deleteOne({ _id: clave });
 }
 
+/**
+ * Límite por ventana fija: cuenta la petición y dice si aún cabe. Vive en la
+ * base porque en Vercel cada petición puede caer en una instancia distinta y un
+ * contador en memoria no limitaría nada.
+ */
+export async function consumirLimite(
+  cubo: string,
+  max: number,
+  ventanaMs: number,
+): Promise<{ permitido: boolean; reintentarEnS: number }> {
+  const ahora = Date.now();
+  const ventana = Math.floor(ahora / ventanaMs);
+  const col = await colecciones.limites();
+  const actualizar = () =>
+    col.findOneAndUpdate(
+      { _id: `${cubo}:${ventana}` },
+      { $inc: { cuenta: 1 }, $setOnInsert: { expiraEn: new Date((ventana + 2) * ventanaMs) } },
+      { upsert: true, returnDocument: "after" },
+    );
+  let doc;
+  try {
+    doc = await actualizar();
+  } catch (error) {
+    // Dos peticiones a la vez pueden intentar crear el mismo contador: la
+    // perdedora reintenta y ya lo encuentra.
+    if ((error as { code?: number }).code !== 11000) throw error;
+    doc = await actualizar();
+  }
+  return {
+    permitido: (doc?.cuenta ?? 1) <= max,
+    reintentarEnS: Math.max(1, Math.ceil(((ventana + 1) * ventanaMs - ahora) / 1000)),
+  };
+}
+
 /* ─── Respaldo ───────────────────────────────────────────────────────────── */
 
 export const COLECCIONES_RESPALDO = [
@@ -833,7 +883,8 @@ export async function exportarRespaldo(): Promise<string> {
     datos[nombre] =
       nombre === "ajustes"
         ? docs.map((d) => {
-            const { claveHash: _c, sesionVersion: _v, ...resto } = d as AjustesDoc;
+            // Por si una base antigua aún guarda la clave aquí.
+            const { claveHash: _c, sesionVersion: _v, ...resto } = d as AjustesDoc & Record<string, unknown>;
             return resto;
           })
         : docs;
@@ -842,4 +893,71 @@ export async function exportarRespaldo(): Promise<string> {
     { formato: "finanza-respaldo", version: 1, generadoEn: ahora(), colecciones: datos },
     { relaxed: false },
   );
+}
+
+/* ─── Portadas del calendario ────────────────────────────────────────────── */
+
+export const TOTAL_FONDOS_PORTADA = 6;
+const CLAVE_TODOS = "todos";
+
+export type CambioPortada =
+  | { tipo: "auto" }
+  | { tipo: "fondo"; fondo: number }
+  | { tipo: "enlace"; url: string }
+  | { tipo: "imagen"; imagen: Uint8Array; mime: string };
+
+function aPortada(doc: PortadaDoc): Portada {
+  switch (doc.tipo) {
+    case "fondo":
+      return { tipo: "fondo", fondo: doc.fondo ?? 0 };
+    case "enlace":
+      return { tipo: "enlace", url: doc.url ?? "" };
+    case "imagen":
+      return { tipo: "imagen", version: doc.version };
+    default:
+      return { tipo: "auto" };
+  }
+}
+
+/** Todas las portadas guardadas, sin los bytes de las imágenes. */
+export async function listarPortadas(): Promise<Portadas> {
+  const docs = await (await colecciones.portadas()).find({}, { projection: { imagen: 0 } }).toArray();
+  return Object.fromEntries(docs.map((d) => [d._id, aPortada(d)]));
+}
+
+/**
+ * Fija la portada de un mes, o de todos: la de "todos" reemplaza además las que
+ * cada mes tuviera, porque quien la elige espera verla en el calendario entero.
+ */
+export async function guardarPortada(clave: string, cambio: CambioPortada): Promise<Portadas> {
+  const col = await colecciones.portadas();
+  if (clave === CLAVE_TODOS) {
+    await col.deleteMany({ _id: { $ne: CLAVE_TODOS } });
+    if (cambio.tipo === "auto") {
+      await col.deleteOne({ _id: CLAVE_TODOS });
+      return listarPortadas();
+    }
+  }
+  const doc: Omit<PortadaDoc, "_id"> = { tipo: cambio.tipo, version: Date.now().toString(36), actualizadoEn: ahora() };
+  if (cambio.tipo === "fondo") doc.fondo = cambio.fondo;
+  if (cambio.tipo === "enlace") doc.url = cambio.url;
+  if (cambio.tipo === "imagen") {
+    doc.imagen = new Binary(cambio.imagen);
+    doc.mime = cambio.mime;
+  }
+  // replaceOne y no $set: al cambiar de tipo no deben quedar la url o los
+  // bytes de la portada anterior.
+  await col.replaceOne({ _id: clave }, doc, { upsert: true });
+  return listarPortadas();
+}
+
+export async function leerImagenPortada(clave: string): Promise<{ bytes: Uint8Array; mime: string } | null> {
+  const doc = await (await colecciones.portadas()).findOne({ _id: clave, tipo: "imagen" });
+  if (!doc?.imagen || !doc.mime) return null;
+  return { bytes: doc.imagen.buffer, mime: doc.mime };
+}
+
+export async function quitarPortada(clave: string): Promise<Portadas> {
+  await (await colecciones.portadas()).deleteOne({ _id: clave });
+  return listarPortadas();
 }

@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
+import { Tooltip } from "./tooltip";
 
 interface Props {
   abierto: boolean;
@@ -12,13 +13,21 @@ interface Props {
   children: ReactNode;
 }
 
+// Modales abiertos, del más viejo al más nuevo: con uno encima de otro (una
+// confirmación sobre un formulario), Escape y Tab solo los atiende el de arriba.
+const pila: object[] = [];
+
 export function Modal({ abierto, titulo, descripcion, onCerrar, children }: Props) {
   const panel = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!abierto) return;
 
+    const yo = {};
+    pila.push(yo);
+
     const alPulsar = (e: KeyboardEvent) => {
+      if (pila.at(-1) !== yo) return;
       if (e.key === "Escape") onCerrar();
       if (e.key !== "Tab" || !panel.current) return;
       // Mantiene el foco dentro del diálogo mientras está abierto.
@@ -48,6 +57,7 @@ export function Modal({ abierto, titulo, descripcion, onCerrar, children }: Prop
     }, 60);
 
     return () => {
+      pila.splice(pila.indexOf(yo), 1);
       document.removeEventListener("keydown", alPulsar);
       document.body.style.overflow = overflowPrevio;
       window.clearTimeout(t);
@@ -90,14 +100,20 @@ export function Modal({ abierto, titulo, descripcion, onCerrar, children }: Prop
                   <p className="mt-1 text-[13.5px] leading-relaxed text-tinta-3">{descripcion}</p>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={onCerrar}
-                aria-label="Cerrar"
-                className="-mt-1 -mr-1 grid size-11 shrink-0 cursor-pointer place-items-center rounded-xl text-tinta-3 transition-colors hover:bg-superficie-alta hover:text-tinta"
-              >
-                <X className="size-5" aria-hidden="true" />
-              </button>
+              <Tooltip texto="Cerrar">
+                <button
+                  type="button"
+                  onClick={onCerrar}
+                  aria-label="Cerrar"
+                  className="group -mt-1 -mr-1 grid size-11 shrink-0 cursor-pointer place-items-center rounded-xl text-tinta-3 transition-[background-color,color,transform] duration-200 hover:bg-superficie-alta hover:text-tinta active:scale-90"
+                >
+                  {/* Al pasar el puntero la X gira un cuarto de vuelta y crece un poco. */}
+                  <X
+                    className="size-5 transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-hover:scale-110 group-hover:rotate-90"
+                    aria-hidden="true"
+                  />
+                </button>
+              </Tooltip>
             </div>
             {children}
           </motion.div>

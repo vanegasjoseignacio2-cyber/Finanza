@@ -59,6 +59,11 @@ export interface Recordatorio {
    * pago, que crea un gasto vinculado.
    */
   pagados: string[];
+  /**
+   * Gasto programado una sola vez (YYYY-MM-DD): un cumpleaños, un aniversario.
+   * Solo cuenta en su mes; `dia` es el día de esta fecha. null = se repite cada mes.
+   */
+  fecha: string | null;
   creadoEn: string;
 }
 
@@ -70,6 +75,8 @@ export interface RecordatorioCalculado extends Recordatorio {
   vencimiento: string; // YYYY-MM-DD
   diasFaltantes: number;
   vencido: boolean;
+  /** Cae en el mes en curso. Falso solo en gastos programados para un mes que viene. */
+  esteMes: boolean;
 }
 
 export interface Meta {
@@ -127,7 +134,6 @@ export interface Ajustes {
   sueldos: TramoSueldo[];
   email: string;
   emailActivo: boolean;
-  enviarSiempre: boolean;
   diasAviso: number;
   respaldoSemanal: boolean;
   actualizadoEn: string;
@@ -193,10 +199,8 @@ export interface Resumen {
   /** Lo que de verdad queda para gastar: ingreso − gastado − ahorro − fijos pendientes. */
   libre: number;
   diasRestantes: number | null;
-  porDia: number | null;
   /** Cuota de metas con fecha límite que falta apartar este mes. */
   cuotaMetasPendiente: number;
-  porDiaTrasMetas: number | null;
 
   categorias: ResumenCategoria[];
   presupuestos: PresupuestoCalculado[];
@@ -208,3 +212,17 @@ export interface Resumen {
   alertas: Alerta[];
   ajustes: Ajustes;
 }
+
+/**
+ * Portada del calendario, por mes (clave YYYY-MM) o para todos los meses
+ * (clave "todos"). "auto" es el fondo que rota solo cada mes.
+ */
+export type Portada =
+  | { tipo: "auto" }
+  | { tipo: "fondo"; fondo: number }
+  | { tipo: "enlace"; url: string }
+  // La imagen se sirve aparte (/api/portadas/<clave>); `version` cambia al
+  // reemplazarla para que el navegador no muestre la anterior desde su caché.
+  | { tipo: "imagen"; version: string };
+
+export type Portadas = Record<string, Portada>;

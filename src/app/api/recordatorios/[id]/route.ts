@@ -3,6 +3,7 @@ import { protegido } from "@/lib/seguridad";
 import {
   comoBooleano,
   comoDia,
+  comoFechaOpcional,
   comoMes,
   comoMonto,
   comoTexto,
@@ -26,6 +27,10 @@ export const PATCH = protegido<Ctx>(async (request, { params }) => {
   const cambios: Parameters<typeof actualizarRecordatorio>[1] = {};
   if (c.titulo !== undefined) cambios.titulo = comoTexto(c.titulo, "nombre", 80);
   if (c.dia !== undefined) cambios.dia = comoDia(c.dia);
+  if (c.fecha !== undefined) {
+    cambios.fecha = comoFechaOpcional(c.fecha);
+    if (cambios.fecha) cambios.dia = Number(cambios.fecha.slice(8, 10));
+  }
   if (c.montoEstimado !== undefined) cambios.montoEstimado = comoMonto(c.montoEstimado, "monto estimado", true);
   if (c.categoria !== undefined) cambios.categoria = typeof c.categoria === "string" ? c.categoria : "";
   if (c.activo !== undefined) cambios.activo = comoBooleano(c.activo, true);

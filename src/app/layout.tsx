@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Sora } from "next/font/google";
+import { RegistrarSW } from "@/components/registrar-sw";
+import { ProveedorTooltip } from "@/components/ui/tooltip";
 import "./globals.css";
 
 const sora = Sora({
@@ -20,8 +22,9 @@ export const metadata: Metadata = {
     default: "Finanza",
     template: "%s · Finanza",
   },
-  description: "Cuánto puedes gastar hoy, tus pagos fijos y tus metas, con aviso diario por correo.",
+  description: "Lo que te queda libre este mes, tus pagos fijos y tus metas, con aviso diario por correo.",
   applicationName: "Finanza",
+  robots: { index: false, follow: false, nocache: true },
   appleWebApp: { capable: true, title: "Finanza", statusBarStyle: "black-translucent" },
   icons: {
     icon: [{ url: "/icono.svg", type: "image/svg+xml" }],
@@ -30,7 +33,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#050a14",
+  themeColor: "#000000",
   colorScheme: "dark",
   width: "device-width",
   initialScale: 1,
@@ -40,7 +43,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="es" className={`${sora.variable} ${inter.variable} h-full`}>
-      <body className="min-h-dvh antialiased">{children}</body>
+      <body className="min-h-dvh antialiased">
+        <RegistrarSW />
+        <ProveedorTooltip>{children}</ProveedorTooltip>
+      </body>
     </html>
   );
 }

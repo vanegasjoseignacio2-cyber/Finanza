@@ -4,6 +4,7 @@ import { Link2, Repeat } from "lucide-react";
 import { useCaptura } from "@/components/captura";
 import { useDatos } from "@/components/datos-panel";
 import { Icono } from "@/components/iconos";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Vacio } from "@/components/ui/tarjeta";
 import { pesos } from "@/lib/dinero";
 import { DIAS_SEMANA, fechaCorta } from "@/lib/fechas";
@@ -12,8 +13,8 @@ import type { Movimiento } from "@/lib/types";
 const COLOR: Record<Movimiento["tipo"], string> = {
   gasto: "text-tinta",
   ingreso: "text-verde",
-  ahorro: "text-azul",
-  retiro: "text-azul",
+  ahorro: "text-tinta-2",
+  retiro: "text-tinta-2",
   transferencia: "text-tinta-2",
 };
 
@@ -73,14 +74,13 @@ function Fila({ m, conFecha }: { m: Movimiento; conFecha: boolean }) {
           <span className="flex items-center gap-1.5 text-[14.5px] text-tinta">
             <span className="truncate">{d.titulo}</span>
             {m.recurrenteId && (
-              <span
-                title="Pago fijo"
-                className="inline-flex shrink-0 items-center gap-1 rounded-full bg-superficie-alta px-1.5 py-0.5 text-[11px] text-tinta-2 sm:px-2"
-              >
-                <Link2 className="size-3" aria-hidden="true" />
-                {/* En pantallas estrechas basta el ícono: el texto le robaba espacio al nombre. */}
-                <span className="sr-only sm:not-sr-only">Pago fijo</span>
-              </span>
+              <Tooltip texto="Viene de un pago fijo">
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-superficie-alta px-1.5 py-0.5 text-[11px] text-tinta-2 sm:px-2">
+                  <Link2 className="size-3" aria-hidden="true" />
+                  {/* En pantallas estrechas basta el ícono: el texto le robaba espacio al nombre. */}
+                  <span className="sr-only sm:not-sr-only">Pago fijo</span>
+                </span>
+              </Tooltip>
             )}
           </span>
           {detalle.length > 0 && (
@@ -92,14 +92,16 @@ function Fila({ m, conFecha }: { m: Movimiento; conFecha: boolean }) {
           {pesos(m.monto)}
         </span>
       </button>
-      <button
-        type="button"
-        onClick={() => captura.repetir(m)}
-        aria-label={`Repetir ${d.titulo} con fecha de hoy`}
-        className="area-toque grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg text-tinta-3 transition-colors hover:bg-superficie-alta hover:text-verde"
-      >
-        <Repeat className="size-4" aria-hidden="true" />
-      </button>
+      <Tooltip texto="Repetir hoy">
+        <button
+          type="button"
+          onClick={() => captura.repetir(m)}
+          aria-label={`Repetir ${d.titulo} con fecha de hoy`}
+          className="area-toque grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg text-tinta-3 transition-colors hover:bg-superficie-alta hover:text-tinta"
+        >
+          <Repeat className="size-4" aria-hidden="true" />
+        </button>
+      </Tooltip>
     </li>
   );
 }

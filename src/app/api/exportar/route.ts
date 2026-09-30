@@ -45,4 +45,4 @@ export const GET = protegido(async () => {
       "content-disposition": `attachment; filename="finanza-${hoyISO()}.csv"`,
     },
   });
-});
+}, { cubo: "descarga", max: 10 });

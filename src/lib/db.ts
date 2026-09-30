@@ -1,4 +1,4 @@
-import { MongoClient, type Collection, type Db, type ObjectId } from "mongodb";
+import { MongoClient, type Binary, type Collection, type Db, type ObjectId } from "mongodb";
 import type {
   Ajustes,
   CategoriaPersonal,
@@ -33,6 +33,7 @@ export interface RecordatorioDoc {
   montoEstimado: number;
   activo: boolean;
   pagados: string[];
+  fecha?: string | null;
   creadoEn: string;
 }
 
@@ -68,13 +69,20 @@ export type CategoriaDoc = Omit<CategoriaPersonal, "id"> & { _id: string };
 /** Ajustes más los campos del modelo anterior, que se migran al leer. */
 export interface AjustesDoc extends Partial<Ajustes> {
   _id: string;
-  sesionVersion?: number;
-  claveHash?: string | null;
   // Legado
   ingresoMensual?: number;
   metaAhorro?: number;
   metaNombre?: string;
   metaFechaLimite?: string | null;
+}
+
+/** Quien entra al panel. La colección tiene un solo documento: no hay registro público. */
+export interface UsuarioDoc {
+  _id: string; // correo en minúsculas
+  claveHash: string;
+  sesionVersion: number;
+  creadoEn: string;
+  actualizadoEn?: string;
 }
 
 export interface EnvioDoc {
@@ -89,11 +97,29 @@ export interface EnvioDoc {
   respaldo?: boolean;
 }
 
+export interface PortadaDoc {
+  _id: string; // YYYY-MM o "todos"
+  tipo: "auto" | "fondo" | "enlace" | "imagen";
+  fondo?: number;
+  url?: string;
+  imagen?: Binary;
+  mime?: string;
+  version: string;
+  actualizadoEn: string;
+}
+
 export interface IntentoDoc {
   _id: string; // hash de la IP
   fallos: number;
   desde: Date;
   bloqueadoHasta: Date | null;
+}
+
+/** Contador de peticiones por cubo y ventana; Mongo lo borra solo al expirar. */
+export interface LimiteDoc {
+  _id: string; // cubo:ventana
+  cuenta: number;
+  expiraEn: Date;
 }
 
 /* ─── Conexión ───────────────────────────────────────────────────────────── */
@@ -126,6 +152,7 @@ async function asegurarIndices(db: Db): Promise<void> {
     db.collection("movimientos").createIndex({ tipo: 1, mes: 1 }),
     db.collection("movimientos").createIndex({ recurrenteId: 1, mes: 1 }, { sparse: true }),
     db.collection("recordatorios").createIndex({ dia: 1 }),
+    db.collection("limites").createIndex({ expiraEn: 1 }, { expireAfterSeconds: 0 }),
     // Únicos parciales: si dos peticiones crean a la vez la cuenta principal o
     // migran la meta antigua, el servidor reintenta el upsert en vez de duplicar.
     db.collection("cuentas").createIndex(
@@ -173,6 +200,9 @@ export const colecciones = {
   presupuestos: () => col<PresupuestoDoc>("presupuestos"),
   categorias: () => col<CategoriaDoc>("categorias"),
   ajustes: () => col<AjustesDoc>("ajustes"),
+  usuarios: () => col<UsuarioDoc>("usuarios"),
   envios: () => col<EnvioDoc>("envios"),
   intentos: () => col<IntentoDoc>("intentos"),
+  limites: () => col<LimiteDoc>("limites"),
+  portadas: () => col<PortadaDoc>("portadas"),
 };

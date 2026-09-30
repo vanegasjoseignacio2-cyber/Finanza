@@ -1,6 +1,7 @@
 "use client";
 
 import { Pencil, Plus } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { useDatos } from "@/components/datos-panel";
@@ -11,11 +12,13 @@ import { ListaPagosFijos, ModalPagoFijo } from "@/components/paneles/pagos-fijos
 import { SelectorMes } from "@/components/selector-mes";
 import { useAvisos } from "@/components/ui/avisos";
 import { Boton } from "@/components/ui/boton";
+import { Confirmar } from "@/components/ui/confirmar";
 import { Cabecera } from "@/components/ui/cabecera";
 import { Selector } from "@/components/ui/campo";
 import { CampoDinero } from "@/components/ui/campo-dinero";
 import { Modal } from "@/components/ui/modal";
 import { Tarjeta, Vacio } from "@/components/ui/tarjeta";
+import { Tooltip } from "@/components/ui/tooltip";
 import { peticion } from "@/lib/cliente";
 import { pesos } from "@/lib/dinero";
 import type { PresupuestoCalculado, Resumen } from "@/lib/types";
@@ -84,14 +87,16 @@ export function VistaPresupuesto({ resumen: r }: { resumen: Resumen }) {
                       <span className="shrink-0 text-[13.5px] tabular text-tinta-2">
                         {pesos(p.gastado)} <span className="text-tinta-3">/ {pesos(p.tope)}</span>
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => setTope({ categoria: p.categoria, tope: p.tope })}
-                        aria-label={`Cambiar el tope de ${c.label}`}
-                        className="area-toque grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg text-tinta-3 hover:bg-superficie-alta hover:text-tinta"
-                      >
-                        <Pencil className="size-3.5" aria-hidden="true" />
-                      </button>
+                      <Tooltip texto="Cambiar tope">
+                        <button
+                          type="button"
+                          onClick={() => setTope({ categoria: p.categoria, tope: p.tope })}
+                          aria-label={`Cambiar el tope de ${c.label}`}
+                          className="area-toque grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg text-tinta-3 hover:bg-superficie-alta hover:text-tinta"
+                        >
+                          <Pencil className="size-3.5" aria-hidden="true" />
+                        </button>
+                      </Tooltip>
                     </div>
                     <Barra
                       porcentaje={p.porcentaje}
@@ -154,6 +159,9 @@ export function VistaPresupuesto({ resumen: r }: { resumen: Resumen }) {
           {r.momento !== "actual" && (
             <p className="mb-3 text-[12.5px] text-tinta-3">El estado de cada pago es el del mes en curso.</p>
           )}
+          <Link href="/calendario" className="mb-3 inline-block text-[12.5px] text-tinta-3 underline decoration-borde underline-offset-2 hover:text-tinta">
+            Ver en el calendario, con los festivos del mes
+          </Link>
           <ListaPagosFijos recordatorios={r.recordatorios} completa />
         </Tarjeta>
       </div>
@@ -201,6 +209,7 @@ function FormularioTope({
   const [tope, setTope] = useState<number | null>(inicial.tope);
   const [guardando, setGuardando] = useState<"guardar" | "quitar" | null>(null);
   const [error, setError] = useState("");
+  const [confirmando, setConfirmando] = useState(false);
 
   async function guardar(valor: number, accion: "guardar" | "quitar") {
     setGuardando(accion);
@@ -245,8 +254,7 @@ function FormularioTope({
             variante="fantasma"
             tamano="sm"
             className="sm:mr-auto"
-            cargando={guardando === "quitar"}
-            onClick={() => guardar(0, "quitar")}
+            onClick={() => setConfirmando(true)}
           >
             Quitar tope
           </Boton>
@@ -255,6 +263,15 @@ function FormularioTope({
           Guardar tope
         </Boton>
       </div>
+
+      <Confirmar
+        abierto={confirmando}
+        titulo="¿Quitar este tope?"
+        descripcion="La categoría queda sin límite mensual y deja de avisarte cuando te acerques."
+        accion="Quitar tope"
+        onConfirmar={() => guardar(0, "quitar")}
+        onCerrar={() => setConfirmando(false)}
+      />
     </form>
   );
 }

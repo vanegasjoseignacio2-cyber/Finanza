@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { ProveedorCaptura } from "@/components/captura";
 import { ProveedorDatos } from "@/components/datos-panel";
-import { BarraInferiorMovil, BarraLateral, BarraSuperiorMovil } from "@/components/navegacion";
+import { BarraInferiorMovil, BarraLateral, BarraSuperiorMovil, EspacioMenu, ProveedorMenu } from "@/components/navegacion";
 import { ProveedorAvisos } from "@/components/ui/avisos";
 import {
   listarCategoriasPersonales,
@@ -42,23 +42,25 @@ export default async function LayoutPanel({ children }: LayoutProps<"/">) {
         }}
       >
         <ProveedorCaptura>
-          <a
-            href="#contenido"
-            className="sr-only z-50 rounded-lg bg-verde px-4 text-[#04121c] focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:flex focus:min-h-11 focus:items-center"
-          >
-            Saltar al contenido
-          </a>
-          <BarraLateral />
-          <BarraSuperiorMovil />
-          <div className="lg:pl-64">
-            <main
-              id="contenido"
-              className="mx-auto w-full max-w-6xl px-4 pt-5 pb-32 sm:px-6 lg:px-8 lg:pt-10 lg:pb-12"
+          <ProveedorMenu>
+            <a
+              href="#contenido"
+              className="sr-only z-50 rounded-lg bg-acento px-4 text-[#04121c] focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:flex focus:min-h-11 focus:items-center"
             >
-              {children}
-            </main>
-          </div>
-          <BarraInferiorMovil />
+              Saltar al contenido
+            </a>
+            <BarraLateral />
+            <BarraSuperiorMovil />
+            <EspacioMenu>
+              <main
+                id="contenido"
+                className="mx-auto w-full max-w-6xl px-4 pt-5 pb-32 sm:px-6 lg:px-8 lg:pt-10 lg:pb-12"
+              >
+                {children}
+              </main>
+            </EspacioMenu>
+            <BarraInferiorMovil />
+          </ProveedorMenu>
         </ProveedorCaptura>
       </ProveedorDatos>
     </ProveedorAvisos>

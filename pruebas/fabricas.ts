@@ -32,6 +32,7 @@ export function recordatorio(parcial: Partial<Recordatorio> = {}): Recordatorio 
     montoEstimado: 900_000,
     activo: true,
     pagados: [],
+    fecha: null,
     creadoEn: "2026-01-01T00:00:00.000Z",
     ...parcial,
   };
@@ -68,7 +69,6 @@ export function ajustes(parcial: Partial<Ajustes> = {}): Ajustes {
     sueldos: [{ desde: "2020-01", monto: 2_000_000 }],
     email: "yo@ejemplo.com",
     emailActivo: true,
-    enviarSiempre: false,
     diasAviso: 3,
     respaldoSemanal: true,
     actualizadoEn: "2026-09-01T00:00:00.000Z",

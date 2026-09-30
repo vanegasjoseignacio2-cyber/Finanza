@@ -36,7 +36,7 @@ export default function ErrorGlobal({
         <button
           type="button"
           onClick={reset}
-          className="mt-6 inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl degradado-marca px-5 text-[14px] font-semibold text-[#04121c] transition-[filter] hover:brightness-110"
+          className="mt-6 inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl degradado-marca px-5 text-[14px] font-semibold text-[#04121c] transition-[filter] hover:brightness-95"
         >
           <RefreshCw className="size-4" aria-hidden="true" />
           Reintentar

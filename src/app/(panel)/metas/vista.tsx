@@ -9,11 +9,13 @@ import { useDatos } from "@/components/datos-panel";
 import { Barra } from "@/components/paneles/barra";
 import { useAvisos } from "@/components/ui/avisos";
 import { Boton } from "@/components/ui/boton";
+import { Confirmar } from "@/components/ui/confirmar";
 import { Cabecera } from "@/components/ui/cabecera";
 import { Campo, Selector } from "@/components/ui/campo";
 import { CampoDinero } from "@/components/ui/campo-dinero";
 import { Modal } from "@/components/ui/modal";
 import { Tarjeta, Vacio } from "@/components/ui/tarjeta";
+import { Tooltip } from "@/components/ui/tooltip";
 import { peticion } from "@/lib/cliente";
 import { pesos } from "@/lib/dinero";
 import { fechaLarga, mesActual, nombreMes, sumarMeses } from "@/lib/fechas";
@@ -24,20 +26,18 @@ function TarjetaMeta({ m, indice, onEditar }: { m: MetaCalculada; indice: number
   const avisos = useAvisos();
   const captura = useCaptura();
   const { cuentas } = useDatos();
-  const [archivando, setArchivando] = useState<"confirmar" | "enviando" | null>(null);
+  const [confirmando, setConfirmando] = useState(false);
   const cuenta = cuentas.find((c) => c.id === m.cuentaId);
   const cumplida = m.progreso >= 100;
   const alcanza = m.cuotaSugerida !== null && m.promedioMensual >= m.cuotaSugerida;
 
   async function archivar() {
-    setArchivando("enviando");
     try {
       await peticion(`/api/metas/${m.id}`, { method: "PATCH", body: JSON.stringify({ archivada: true }) });
       avisos.exito(`${m.nombre} archivada. Sus movimientos se conservan.`);
       router.refresh();
     } catch (e) {
       avisos.error(e instanceof Error ? e.message : "No pudimos archivarla.");
-      setArchivando(null);
     }
   }
 
@@ -56,14 +56,16 @@ function TarjetaMeta({ m, indice, onEditar }: { m: MetaCalculada; indice: number
           </h2>
           {cuenta && <p className="text-[12.5px] text-tinta-3">En {cuenta.nombre}</p>}
         </div>
-        <button
-          type="button"
-          onClick={onEditar}
-          aria-label={`Editar ${m.nombre}`}
-          className="area-toque grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg text-tinta-3 hover:bg-superficie-alta hover:text-tinta"
-        >
-          <Pencil className="size-4" aria-hidden="true" />
-        </button>
+        <Tooltip texto="Editar">
+          <button
+            type="button"
+            onClick={onEditar}
+            aria-label={`Editar ${m.nombre}`}
+            className="area-toque grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg text-tinta-3 hover:bg-superficie-alta hover:text-tinta"
+          >
+            <Pencil className="size-4" aria-hidden="true" />
+          </button>
+        </Tooltip>
       </header>
 
       <div className="flex flex-col gap-2">
@@ -115,22 +117,21 @@ function TarjetaMeta({ m, indice, onEditar }: { m: MetaCalculada; indice: number
           <ArrowDownToLine className="size-4" aria-hidden="true" />
           Retirar
         </Boton>
-        {archivando === "confirmar" || archivando === "enviando" ? (
-          <span className="ml-auto flex items-center gap-1">
-            <Boton tamano="sm" variante="peligro" cargando={archivando === "enviando"} onClick={archivar}>
-              Archivar
-            </Boton>
-            <Boton tamano="sm" variante="fantasma" onClick={() => setArchivando(null)}>
-              No
-            </Boton>
-          </span>
-        ) : (
-          <Boton tamano="sm" variante="fantasma" className="ml-auto" onClick={() => setArchivando("confirmar")}>
-            <Archive className="size-4" aria-hidden="true" />
-            Archivar
-          </Boton>
-        )}
+        <Boton tamano="sm" variante="fantasma" className="ml-auto" onClick={() => setConfirmando(true)}>
+          <Archive className="size-4" aria-hidden="true" />
+          Archivar
+        </Boton>
       </div>
+
+      <Confirmar
+        abierto={confirmando}
+        titulo={`¿Archivar ${m.nombre}?`}
+        descripcion="Deja de aparecer en tus metas. Los aportes y retiros que hiciste se conservan."
+        accion="Archivar"
+        icono={<Archive className="size-4" aria-hidden="true" />}
+        onConfirmar={archivar}
+        onCerrar={() => setConfirmando(false)}
+      />
     </motion.article>
   );
 }

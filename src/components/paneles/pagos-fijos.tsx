@@ -18,8 +18,11 @@ import { useAvisos } from "@/components/ui/avisos";
 import { Boton } from "@/components/ui/boton";
 import { Campo, Selector } from "@/components/ui/campo";
 import { CampoDinero } from "@/components/ui/campo-dinero";
+import { Confirmar } from "@/components/ui/confirmar";
 import { Modal } from "@/components/ui/modal";
+import { Segmentado } from "@/components/ui/segmentado";
 import { Vacio } from "@/components/ui/tarjeta";
+import { Tooltip } from "@/components/ui/tooltip";
 import { peticion } from "@/lib/cliente";
 import { pesos } from "@/lib/dinero";
 import { fechaCorta, hoyISO } from "@/lib/fechas";
@@ -55,6 +58,46 @@ function Insignia({ r }: { r: RecordatorioCalculado }) {
   );
 }
 
+/** "Hoy", "Mañana", "Faltan 5 días", "Venció hace 2 días". */
+export function textoFalta(dias: number): string {
+  if (dias === 0) return "Hoy";
+  if (dias === 1) return "Mañana";
+  if (dias < 0) return `Venció hace ${-dias} ${dias === -1 ? "día" : "días"}`;
+  return `Faltan ${dias} días`;
+}
+
+/** Cuenta regresiva grande: cuántos días faltan, en el color de la urgencia. */
+export function Regresiva({ r, grande = false }: { r: RecordatorioCalculado; grande?: boolean }) {
+  const d = r.diasFaltantes;
+  const tono = r.pagado
+    ? "border-verde/30 text-verde"
+    : d < 0
+      ? "border-alerta/40 bg-alerta/10 text-alerta"
+      : d <= 3
+        ? "border-aviso/40 bg-aviso/10 text-aviso"
+        : "border-borde-suave bg-superficie-alta text-tinta";
+  return (
+    <div
+      aria-hidden="true"
+      className={`grid shrink-0 place-content-center rounded-xl border text-center leading-none ${tono} ${grande ? "size-16" : "size-12"}`}
+    >
+      {d === 0 ? (
+        <span className={`font-bold uppercase ${grande ? "text-[14px]" : "text-[12px]"}`}>Hoy</span>
+      ) : (
+        <>
+          <span className={`font-display font-semibold tabular ${grande ? "text-[24px]" : "text-[18px]"}`}>{Math.abs(d)}</span>
+          <span className="mt-1 text-[9.5px] tracking-wide uppercase">{d < 0 ? "tarde" : d === 1 ? "día" : "días"}</span>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Cuándo cae: "Día 5 · 5 oct" si se repite cada mes, "Una vez · 15 nov" si no. */
+export function cuandoCae(r: RecordatorioCalculado): string {
+  return r.fecha ? `Una vez · ${fechaCorta(r.fecha)}` : `Día ${r.dia} · ${fechaCorta(r.vencimiento)}`;
+}
+
 /* ─── Lista ──────────────────────────────────────────────────────────────── */
 
 export function ListaPagosFijos({
@@ -71,7 +114,7 @@ export function ListaPagosFijos({
   const { catalogo } = useDatos();
   const [pagando, setPagando] = useState<RecordatorioCalculado | null>(null);
   const [editando, setEditando] = useState<RecordatorioCalculado | null>(null);
-  const [confirmando, setConfirmando] = useState<{ id: string; accion: "eliminar" | "deshacer" } | null>(null);
+  const [confirmando, setConfirmando] = useState<{ r: RecordatorioCalculado; accion: "eliminar" | "deshacer" } | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
 
   const visibles = limite ? recordatorios.slice(0, limite) : recordatorios;
@@ -91,7 +134,6 @@ export function ListaPagosFijos({
       avisos.error(e instanceof Error ? e.message : "No pudimos actualizar el pago fijo.");
     } finally {
       setOcupado(null);
-      setConfirmando(null);
     }
   }
 
@@ -104,21 +146,34 @@ export function ListaPagosFijos({
       <ul className="flex flex-col">
         {visibles.map((r) => {
           const monto = r.pagado && r.montoPagado !== null ? r.montoPagado : r.montoEstimado;
-          const conConfirmacion = confirmando?.id === r.id;
           return (
             <li key={r.id} className="border-b border-borde-suave py-3 last:border-b-0">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-superficie-alta text-tinta-2">
-                  {r.categoria ? (
-                    <Icono nombre={catalogo.obtener(r.categoria).icono} />
-                  ) : (
-                    <Bell className="size-4" aria-hidden="true" />
-                  )}
-                </span>
+                {completa ? (
+                  <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-superficie-alta text-tinta-2">
+                    {r.categoria ? (
+                      <Icono nombre={catalogo.obtener(r.categoria).icono} />
+                    ) : (
+                      <Bell className="size-4" aria-hidden="true" />
+                    )}
+                  </span>
+                ) : (
+                  <Regresiva r={r} />
+                )}
                 <div className="min-w-0 flex-1">
                   <p className="text-[14.5px] text-tinta">{r.titulo}</p>
                   <p className="text-[12.5px] text-tinta-3">
-                    Día {r.dia} · {fechaCorta(r.vencimiento)}
+                    {!completa &&
+                      (r.pagado ? (
+                        <span className="text-verde">
+                          Pagado · el próximo {r.diasFaltantes === 1 ? "es mañana" : `en ${r.diasFaltantes} días`} ·{" "}
+                        </span>
+                      ) : (
+                        <span className={r.diasFaltantes < 0 ? "text-alerta" : r.diasFaltantes <= 3 ? "text-aviso" : "text-tinta-2"}>
+                          {textoFalta(r.diasFaltantes)} ·{" "}
+                        </span>
+                      ))}
+                    {cuandoCae(r)}
                     {monto > 0 ? ` · ${pesos(monto)}` : " · sin monto estimado"}
                   </p>
                 </div>
@@ -134,35 +189,12 @@ export function ListaPagosFijos({
                     <Boton tamano="sm" variante="secundario" onClick={() => setPagando(r)}>
                       Registrar pago
                     </Boton>
-                  ) : (
+                  ) : !completa && r.pagado ? null : (
                     <Insignia r={r} />
                   )}
 
                   {completa && (
                     <span className="flex flex-wrap items-center justify-end gap-1">
-                      {conConfirmacion ? (
-                        <>
-                          <Boton
-                            tamano="sm"
-                            variante="peligro"
-                            cargando={ocupado === r.id}
-                            onClick={() =>
-                              confirmando.accion === "eliminar"
-                                ? ejecutar(r.id, () => peticion(`/api/recordatorios/${r.id}`, { method: "DELETE" }), "Pago fijo eliminado.")
-                                : ejecutar(
-                                    r.id,
-                                    () => peticion(`/api/recordatorios/${r.id}/pago?mes=${mes}`, { method: "DELETE" }),
-                                    "Pago deshecho: vuelve a contar como pendiente.",
-                                  )
-                            }
-                          >
-                            {confirmando.accion === "eliminar" ? "Eliminar" : "Deshacer"}
-                          </Boton>
-                          <Boton tamano="sm" variante="fantasma" onClick={() => setConfirmando(null)}>
-                            No
-                          </Boton>
-                        </>
-                      ) : (
                         <>
                           {r.activo && !r.pagado && (
                             <Boton tamano="sm" variante="secundario" onClick={() => setPagando(r)}>
@@ -170,47 +202,54 @@ export function ListaPagosFijos({
                             </Boton>
                           )}
                           {r.pagado && (
+                            <Tooltip texto="Deshacer pago">
+                              <button
+                                type="button"
+                                className={boton}
+                                aria-label={`Deshacer el pago de ${r.titulo} de este mes`}
+                                onClick={() => setConfirmando({ r, accion: "deshacer" })}
+                              >
+                                <Undo2 className="size-4" aria-hidden="true" />
+                              </button>
+                            </Tooltip>
+                          )}
+                          <Tooltip texto="Editar">
+                            <button type="button" className={boton} aria-label={`Editar ${r.titulo}`} onClick={() => setEditando(r)}>
+                              <Pencil className="size-4" aria-hidden="true" />
+                            </button>
+                          </Tooltip>
+                          <Tooltip texto={r.activo ? "Pausar" : "Reactivar"}>
                             <button
                               type="button"
                               className={boton}
-                              aria-label={`Deshacer el pago de ${r.titulo} de este mes`}
-                              onClick={() => setConfirmando({ id: r.id, accion: "deshacer" })}
+                              disabled={ocupado === r.id}
+                              aria-label={r.activo ? `Pausar ${r.titulo}` : `Reactivar ${r.titulo}`}
+                              onClick={() =>
+                                ejecutar(
+                                  r.id,
+                                  () =>
+                                    peticion(`/api/recordatorios/${r.id}`, {
+                                      method: "PATCH",
+                                      body: JSON.stringify({ activo: !r.activo }),
+                                    }),
+                                  r.activo ? "Pago en pausa: no se descuenta ni se avisa." : "Pago reactivado.",
+                                )
+                              }
                             >
-                              <Undo2 className="size-4" aria-hidden="true" />
+                              {r.activo ? <BellOff className="size-4" aria-hidden="true" /> : <Bell className="size-4" aria-hidden="true" />}
                             </button>
-                          )}
-                          <button type="button" className={boton} aria-label={`Editar ${r.titulo}`} onClick={() => setEditando(r)}>
-                            <Pencil className="size-4" aria-hidden="true" />
-                          </button>
-                          <button
-                            type="button"
-                            className={boton}
-                            disabled={ocupado === r.id}
-                            aria-label={r.activo ? `Pausar ${r.titulo}` : `Reactivar ${r.titulo}`}
-                            onClick={() =>
-                              ejecutar(
-                                r.id,
-                                () =>
-                                  peticion(`/api/recordatorios/${r.id}`, {
-                                    method: "PATCH",
-                                    body: JSON.stringify({ activo: !r.activo }),
-                                  }),
-                                r.activo ? "Pago en pausa: no se descuenta ni se avisa." : "Pago reactivado.",
-                              )
-                            }
-                          >
-                            {r.activo ? <BellOff className="size-4" aria-hidden="true" /> : <Bell className="size-4" aria-hidden="true" />}
-                          </button>
-                          <button
-                            type="button"
-                            className={`${boton} hover:bg-alerta/10 hover:text-alerta`}
-                            aria-label={`Eliminar ${r.titulo}`}
-                            onClick={() => setConfirmando({ id: r.id, accion: "eliminar" })}
-                          >
-                            <Trash2 className="size-4" aria-hidden="true" />
-                          </button>
+                          </Tooltip>
+                          <Tooltip texto="Eliminar">
+                            <button
+                              type="button"
+                              className={`${boton} hover:bg-alerta/10 hover:text-alerta`}
+                              aria-label={`Eliminar ${r.titulo}`}
+                              onClick={() => setConfirmando({ r, accion: "eliminar" })}
+                            >
+                              <Trash2 className="size-4" aria-hidden="true" />
+                            </button>
+                          </Tooltip>
                         </>
-                      )}
                     </span>
                   )}
                 </div>
@@ -222,6 +261,29 @@ export function ListaPagosFijos({
 
       <ModalPago recordatorio={pagando} onCerrar={() => setPagando(null)} />
       <ModalPagoFijo abierto={editando !== null} recordatorio={editando} onCerrar={() => setEditando(null)} />
+      <Confirmar
+        abierto={confirmando !== null}
+        titulo={confirmando?.accion === "deshacer" ? "¿Deshacer este pago?" : `¿Eliminar ${confirmando?.r.titulo ?? ""}?`}
+        descripcion={
+          confirmando?.accion === "deshacer"
+            ? "Se borra el gasto que lo pagó y vuelve a contar como pendiente."
+            : "Deja de avisarte y de descontarse. Los gastos que ya registraste con él se conservan."
+        }
+        accion={confirmando?.accion === "deshacer" ? "Deshacer pago" : "Eliminar"}
+        icono={confirmando?.accion === "deshacer" ? <Undo2 className="size-4" aria-hidden="true" /> : undefined}
+        onCerrar={() => setConfirmando(null)}
+        onConfirmar={() => {
+          if (!confirmando) return;
+          const { r, accion } = confirmando;
+          return accion === "eliminar"
+            ? ejecutar(r.id, () => peticion(`/api/recordatorios/${r.id}`, { method: "DELETE" }), `${r.titulo}: eliminado.`)
+            : ejecutar(
+                r.id,
+                () => peticion(`/api/recordatorios/${r.id}/pago?mes=${mes}`, { method: "DELETE" }),
+                "Pago deshecho: vuelve a contar como pendiente.",
+              );
+        }}
+      />
     </>
   );
 }
@@ -350,51 +412,90 @@ function FormularioPago({ r, onListo }: { r: RecordatorioCalculado; onListo: () 
 
 /* ─── Crear o editar un pago fijo ────────────────────────────────────────── */
 
+type Frecuencia = "mensual" | "unico";
+
+/**
+ * Crear o editar un pago fijo. Con `fechaInicial` (o `unico`) abre directo en
+ * "Una sola vez": un gasto programado para un solo día, como un cumpleaños.
+ */
 export function ModalPagoFijo({
   abierto,
   recordatorio,
   onCerrar,
+  unico = false,
+  fechaInicial,
 }: {
   abierto: boolean;
   recordatorio: RecordatorioCalculado | null;
   onCerrar: () => void;
+  unico?: boolean;
+  fechaInicial?: string;
 }) {
+  const programado = recordatorio ? recordatorio.fecha !== null : unico || Boolean(fechaInicial);
   return (
     <Modal
       abierto={abierto}
       onCerrar={onCerrar}
-      titulo={recordatorio ? "Editar pago fijo" : "Nuevo pago fijo"}
-      descripcion="Se repite cada mes. Mientras no lo pagues, lo libre para gastar lo descuenta."
+      titulo={recordatorio ? (programado ? "Editar gasto programado" : "Editar pago fijo") : programado ? "Programar gasto" : "Nuevo pago fijo"}
+      descripcion="Mientras no lo pagues, lo libre para gastar de su mes lo descuenta, y te avisamos cuántos días faltan."
     >
-      <FormularioPagoFijo key={recordatorio?.id ?? "nuevo"} r={recordatorio} onListo={onCerrar} />
+      <FormularioPagoFijo
+        key={recordatorio?.id ?? `nuevo-${programado}-${fechaInicial ?? ""}`}
+        r={recordatorio}
+        frecuenciaInicial={programado ? "unico" : "mensual"}
+        fechaInicial={fechaInicial}
+        onListo={onCerrar}
+      />
     </Modal>
   );
 }
 
-function FormularioPagoFijo({ r, onListo }: { r: RecordatorioCalculado | null; onListo: () => void }) {
+function FormularioPagoFijo({
+  r,
+  frecuenciaInicial,
+  fechaInicial,
+  onListo,
+}: {
+  r: RecordatorioCalculado | null;
+  frecuenciaInicial: Frecuencia;
+  fechaInicial?: string;
+  onListo: () => void;
+}) {
   const router = useRouter();
   const avisos = useAvisos();
   const { catalogo } = useDatos();
+  const hoy = hoyISO();
+  const [frecuencia, setFrecuencia] = useState<Frecuencia>(frecuenciaInicial);
   const [titulo, setTitulo] = useState(r?.titulo ?? "");
   const [dia, setDia] = useState(String(r?.dia ?? 5));
+  const [fecha, setFecha] = useState(r?.fecha ?? fechaInicial ?? hoy);
   const [monto, setMonto] = useState<number | null>(r?.montoEstimado || null);
   const [categoria, setCategoria] = useState(r?.categoria ?? "");
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
+  const unico = frecuencia === "unico";
 
   async function guardar(evento: FormEvent) {
     evento.preventDefault();
     const diaNumero = Number(dia);
     if (!titulo.trim()) return setError("Ponle un nombre.");
-    if (!Number.isInteger(diaNumero) || diaNumero < 1 || diaNumero > 31) return setError("El día debe estar entre 1 y 31.");
+    if (unico && !fecha) return setError("Elige la fecha.");
+    if (unico && !r && fecha < hoy) return setError("La fecha ya pasó: elige hoy o un día que venga.");
+    if (!unico && (!Number.isInteger(diaNumero) || diaNumero < 1 || diaNumero > 31)) return setError("El día debe estar entre 1 y 31.");
     setGuardando(true);
     setError("");
     try {
       await peticion(r ? `/api/recordatorios/${r.id}` : "/api/recordatorios", {
         method: r ? "PATCH" : "POST",
-        body: JSON.stringify({ titulo, dia: diaNumero, montoEstimado: monto ?? 0, categoria }),
+        body: JSON.stringify({
+          titulo,
+          dia: unico ? Number(fecha.slice(8, 10)) : diaNumero,
+          fecha: unico ? fecha : null,
+          montoEstimado: monto ?? 0,
+          categoria,
+        }),
       });
-      avisos.exito(r ? "Pago fijo actualizado." : "Pago fijo creado.");
+      avisos.exito(r ? "Cambios guardados." : unico ? `${titulo.trim()}: programado.` : "Pago fijo creado.");
       router.refresh();
       onListo();
     } catch (e) {
@@ -406,28 +507,50 @@ function FormularioPagoFijo({ r, onListo }: { r: RecordatorioCalculado | null; o
 
   return (
     <form onSubmit={guardar} className="flex flex-col gap-4">
+      <Segmentado<Frecuencia>
+        etiqueta="Se repite"
+        columnas="grid-cols-2"
+        valor={frecuencia}
+        onCambio={setFrecuencia}
+        opciones={[
+          { valor: "mensual", etiqueta: "Cada mes" },
+          { valor: "unico", etiqueta: "Una sola vez" },
+        ]}
+      />
       <Campo
         etiqueta="Nombre"
         value={titulo}
         onChange={(e) => setTitulo(e.target.value)}
-        placeholder="Arriendo, plan celular, seguro de la moto..."
+        placeholder={unico ? "Cumpleaños de mamá, aniversario, SOAT..." : "Arriendo, plan celular, seguro de la moto..."}
         maxLength={80}
         required
       />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Campo
-          etiqueta="Día del mes"
-          type="number"
-          inputMode="numeric"
-          min={1}
-          max={31}
-          value={dia}
-          onChange={(e) => setDia(e.target.value)}
-          ayuda="Si el mes no tiene ese día, se usa el último."
-          required
-        />
+        {unico ? (
+          <Campo
+            etiqueta="Fecha"
+            type="date"
+            value={fecha}
+            min={r ? undefined : hoy}
+            onChange={(e) => setFecha(e.target.value)}
+            ayuda="Solo cuenta en ese mes."
+            required
+          />
+        ) : (
+          <Campo
+            etiqueta="Día del mes"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={31}
+            value={dia}
+            onChange={(e) => setDia(e.target.value)}
+            ayuda="Si el mes no tiene ese día, se usa el último."
+            required
+          />
+        )}
         <CampoDinero
-          etiqueta="Monto estimado"
+          etiqueta={unico ? "Cuánto piensas gastar" : "Monto estimado"}
           valor={monto}
           onCambio={setMonto}
           ayuda="Sin monto, lo libre no puede descontarlo."
@@ -447,7 +570,7 @@ function FormularioPagoFijo({ r, onListo }: { r: RecordatorioCalculado | null; o
         </p>
       )}
       <Boton type="submit" cargando={guardando} className="self-end">
-        {r ? "Guardar cambios" : "Crear pago fijo"}
+        {r ? "Guardar cambios" : unico ? "Programar gasto" : "Crear pago fijo"}
       </Boton>
     </form>
   );

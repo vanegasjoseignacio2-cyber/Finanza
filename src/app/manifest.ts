@@ -2,14 +2,16 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
+    id: "/",
     name: "Finanza",
     short_name: "Finanza",
-    description: "Cuánto puedes gastar hoy, tus pagos fijos y tus metas.",
+    description: "Lo que te queda libre este mes, tus pagos fijos y tus metas.",
     start_url: "/",
+    scope: "/",
     display: "standalone",
     orientation: "portrait",
-    background_color: "#050a14",
-    theme_color: "#050a14",
+    background_color: "#000000",
+    theme_color: "#000000",
     lang: "es-CO",
     icons: [
       { src: "/iconos/icono-192.png", sizes: "192x192", type: "image/png" },

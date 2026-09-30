@@ -96,12 +96,40 @@ export function comoBooleano(valor: unknown, porDefecto = false): boolean {
   return porDefecto;
 }
 
+const MAX_BYTES_JSON = 256 * 1024;
+const MAX_PROFUNDIDAD_JSON = 6;
+
+/**
+ * Rechaza claves que Mongo interpretaría como operadores (`$ne`, `$where`…), con
+ * punto (rutas anidadas) o que contaminen prototipos. Ningún campo legítimo de
+ * esta app las usa, así que un objeto con ellas solo puede ser un ataque.
+ */
+function exigirObjetoLimpio(valor: unknown, profundidad = 0): void {
+  if (profundidad > MAX_PROFUNDIDAD_JSON) throw new ErrorValidacion("La petición está demasiado anidada.");
+  if (Array.isArray(valor)) {
+    for (const item of valor) exigirObjetoLimpio(item, profundidad + 1);
+    return;
+  }
+  if (valor && typeof valor === "object") {
+    for (const [clave, hijo] of Object.entries(valor)) {
+      if (clave.startsWith("$") || clave.includes(".") || clave === "__proto__" || clave === "constructor") {
+        throw new ErrorValidacion("La petición contiene campos no permitidos.");
+      }
+      exigirObjetoLimpio(hijo, profundidad + 1);
+    }
+  }
+}
+
 export async function leerJson(request: Request): Promise<Record<string, unknown>> {
+  if (Number(request.headers.get("content-length") ?? 0) > MAX_BYTES_JSON) {
+    throw new ErrorValidacion("La petición es demasiado grande.");
+  }
   try {
     const cuerpo = await request.json();
     if (!cuerpo || typeof cuerpo !== "object" || Array.isArray(cuerpo)) {
       throw new ErrorValidacion("El cuerpo de la petición debe ser un objeto JSON.");
     }
+    exigirObjetoLimpio(cuerpo);
     return cuerpo as Record<string, unknown>;
   } catch (error) {
     if (error instanceof ErrorValidacion) throw error;

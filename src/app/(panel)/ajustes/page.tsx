@@ -1,6 +1,7 @@
 import { listarCuentas, listarEnvios, obtenerAjustes, obtenerCatalogo, sumasHistoricas } from "@/lib/datos";
 import { diagnosticoCorreo } from "@/lib/email/estado";
 import { calcularSaldos } from "@/lib/finanzas";
+import { usuarioActual } from "@/lib/seguridad";
 import { VistaAjustes } from "./vista";
 
 export const metadata = { title: "Ajustes" };
@@ -21,6 +22,7 @@ export default async function PaginaAjustes() {
       categorias={catalogo.lista.filter((c) => c.tipo === "gasto" || c.tipo === "ingreso")}
       envios={envios}
       diagnostico={diagnosticoCorreo()}
+      correo={(await usuarioActual()) ?? ""}
     />
   );
 }

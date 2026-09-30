@@ -15,7 +15,6 @@ export const PUT = protegido(async (request) => {
   const cambios: Partial<Ajustes> = {};
   if (c.email !== undefined) cambios.email = comoEmail(c.email);
   if (c.emailActivo !== undefined) cambios.emailActivo = comoBooleano(c.emailActivo, true);
-  if (c.enviarSiempre !== undefined) cambios.enviarSiempre = comoBooleano(c.enviarSiempre);
   if (c.respaldoSemanal !== undefined) cambios.respaldoSemanal = comoBooleano(c.respaldoSemanal, true);
   if (c.diasAviso !== undefined) {
     const dias = Number(c.diasAviso);

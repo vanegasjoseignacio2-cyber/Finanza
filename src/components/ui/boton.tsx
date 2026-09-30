@@ -10,9 +10,9 @@ type Tamano = "md" | "sm";
 
 const VARIANTES: Record<Variante, string> = {
   primario:
-    "degradado-marca text-[#04121c] font-semibold shadow-[0_8px_24px_-12px_rgba(52,211,153,0.8)] hover:brightness-110",
+    "degradado-marca text-[#04121c] font-semibold shadow-[0_8px_24px_-12px_rgba(255,255,255,0.3)] hover:brightness-95",
   secundario:
-    "bg-superficie-alta/70 text-tinta border border-borde hover:border-verde/50 hover:text-white",
+    "bg-superficie-alta/70 text-tinta border border-borde hover:border-tinta-3 hover:text-white",
   fantasma: "text-tinta-2 hover:text-tinta hover:bg-superficie-alta/60",
   peligro:
     "bg-alerta/10 text-alerta border border-alerta/30 hover:bg-alerta/20 hover:text-alerta",

@@ -14,6 +14,7 @@ import {
 import { useDatos } from "@/components/datos-panel";
 import { useAvisos } from "@/components/ui/avisos";
 import { Boton } from "@/components/ui/boton";
+import { Confirmar } from "@/components/ui/confirmar";
 import { Campo, Selector } from "@/components/ui/campo";
 import { CampoDinero } from "@/components/ui/campo-dinero";
 import { Modal } from "@/components/ui/modal";
@@ -372,7 +373,7 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
             <button
               type="button"
               onClick={() => elegirPagoFijo(sugerido.id)}
-              className="area-toque mt-2 inline-flex cursor-pointer items-center gap-1.5 rounded-lg text-[12.5px] text-verde hover:underline"
+              className="area-toque mt-2 inline-flex cursor-pointer items-center gap-1.5 rounded-lg text-[12.5px] text-acento hover:underline"
             >
               <Link2 className="size-3.5" aria-hidden="true" />
               ¿Es el pago de «{sugerido.titulo}»? Vincúlalo
@@ -396,32 +397,30 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
       ) : null}
 
       <div className="mt-1 flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
-        {editando &&
-          (confirmandoBorrado ? (
-            <span className="flex items-center gap-2 sm:mr-auto">
-              <Boton type="button" variante="peligro" tamano="sm" cargando={guardando} onClick={borrar}>
-                Sí, eliminar
-              </Boton>
-              <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setConfirmandoBorrado(false)}>
-                No
-              </Boton>
-            </span>
-          ) : (
-            <Boton
-              type="button"
-              variante="fantasma"
-              tamano="sm"
-              className="sm:mr-auto"
-              onClick={() => setConfirmandoBorrado(true)}
-            >
-              <Trash2 className="size-4" aria-hidden="true" />
-              Eliminar
-            </Boton>
-          ))}
+        {editando && (
+          <Boton
+            type="button"
+            variante="fantasma"
+            tamano="sm"
+            className="sm:mr-auto"
+            onClick={() => setConfirmandoBorrado(true)}
+          >
+            <Trash2 className="size-4" aria-hidden="true" />
+            Eliminar
+          </Boton>
+        )}
         <Boton type="submit" cargando={guardando} disabled={bloqueado} className="sm:ml-auto">
           {editando ? "Guardar cambios" : "Guardar"}
         </Boton>
       </div>
+
+      <Confirmar
+        abierto={confirmandoBorrado}
+        titulo="¿Eliminar este movimiento?"
+        descripcion="Se borra del mes y de los saldos. No se puede deshacer."
+        onConfirmar={borrar}
+        onCerrar={() => setConfirmandoBorrado(false)}
+      />
     </form>
   );
 }

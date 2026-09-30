@@ -7,8 +7,8 @@
  *   npm run restaurar -- finanza-respaldo-2026-09-21.json --reemplazar
  *
  * Sin --reemplazar solo restaura sobre una base vacía. Con --reemplazar borra
- * lo que haya en cada colección antes de cargar el respaldo. La clave de acceso
- * y la versión de sesión actuales se conservan (el respaldo no las incluye).
+ * lo que haya en cada colección antes de cargar el respaldo. El usuario y su
+ * clave viven en la colección "usuarios", que el respaldo no incluye: no se toca.
  */
 import { readFile } from "node:fs/promises";
 import { BSON, MongoClient } from "mongodb";
@@ -52,24 +52,13 @@ try {
     }
   }
 
-  // La seguridad actual no viaja en el respaldo y no debe perderse.
-  const seguridad = await db
-    .collection("ajustes")
-    .findOne({ _id: "app" }, { projection: { claveHash: 1, sesionVersion: 1 } });
-
   for (const nombre of nombres) {
     const docs = respaldo.colecciones[nombre];
     if (!Array.isArray(docs)) continue;
     const coleccion = db.collection(nombre);
     if (reemplazar) await coleccion.deleteMany({});
-    const aInsertar =
-      nombre === "ajustes" && seguridad
-        ? docs.map((d) =>
-            d._id === "app" ? { ...d, claveHash: seguridad.claveHash, sesionVersion: seguridad.sesionVersion } : d,
-          )
-        : docs;
-    if (aInsertar.length > 0) await coleccion.insertMany(aInsertar);
-    console.log(`${nombre.padEnd(14)} ${aInsertar.length} documentos`);
+    if (docs.length > 0) await coleccion.insertMany(docs);
+    console.log(`${nombre.padEnd(14)} ${docs.length} documentos`);
   }
   console.log(`\nRespaldo del ${respaldo.generadoEn} restaurado.`);
 } finally {

@@ -18,4 +18,4 @@ export const POST = protegido(async (request) => {
     return Response.json({ error: resultado.motivo ?? "No se pudo enviar." }, { status: 400 });
   }
   return Response.json(resultado);
-});
+}, { cubo: "correo", max: 5 });

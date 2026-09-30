@@ -11,4 +11,5 @@ export const GET = protegido(async () =>
       "content-disposition": `attachment; filename="finanza-respaldo-${hoyISO()}.json"`,
     },
   }),
+  { cubo: "descarga", max: 10 },
 );

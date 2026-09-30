@@ -33,7 +33,7 @@ export function CampoDinero({
       <label htmlFor={id} className="text-[13px] font-medium text-tinta-2">
         {etiqueta}
         {requerido && (
-          <span className="ml-1 text-verde" aria-hidden="true">
+          <span className="ml-1 text-acento" aria-hidden="true">
             *
           </span>
         )}
@@ -59,7 +59,7 @@ export function CampoDinero({
             onCambio(soloDigitos === "" ? null : Number(soloDigitos));
           }}
           placeholder="0"
-          className={`min-h-11 w-full rounded-xl border bg-fondo-alto/80 pr-3.5 pl-8 text-[15px] tabular text-tinta placeholder:text-tinta-3 transition-colors focus:border-verde focus:ring-2 focus:ring-verde/30 focus:outline-none ${
+          className={`min-h-11 w-full rounded-xl border bg-fondo-alto/80 pr-3.5 pl-8 text-[15px] tabular text-tinta placeholder:text-tinta-3 transition-colors focus:border-acento focus:ring-2 focus:ring-acento/30 focus:outline-none ${
             error ? "border-alerta/60" : "border-borde"
           }`}
         />

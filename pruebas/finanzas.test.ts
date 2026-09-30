@@ -68,27 +68,17 @@ describe("lo libre para gastar descuenta los pagos fijos que faltan", () => {
     assert.equal(r.fijosPendientes, 0);
   });
 
-  it("reparte lo libre entre los días que quedan, contando hoy", () => {
+  it("cuenta los días que quedan, contando hoy", () => {
     const r = componerResumen(base);
     // Septiembre tiene 30 días; del 21 al 30 inclusive son 10.
     assert.equal(r.diasRestantes, 10);
-    assert.equal(r.porDia, Math.floor(r.libre / 10));
   });
 
-  it("no promete gasto diario negativo", () => {
-    const r = componerResumen({
-      ...base,
-      movimientosMes: [movimiento({ categoria: "arriendo", monto: 3_000_000 })],
-    });
-    assert.ok(r.libre < 0);
-    assert.equal(r.porDia, 0);
-  });
-
-  it("en un mes cerrado no hay pendientes ni gasto por día", () => {
+  it("en un mes cerrado no hay días restantes ni pendientes", () => {
     const r = componerResumen({ ...base, mes: "2026-08", movimientosMes: [] });
     assert.equal(r.momento, "pasado");
     assert.equal(r.fijosPendientes, 0);
-    assert.equal(r.porDia, null);
+    assert.equal(r.diasRestantes, null);
   });
 
   it("en un mes futuro cuenta todos los fijos como pendientes", () => {
@@ -299,11 +289,10 @@ describe("metas", () => {
     assert.equal(con.libre - sin.libre, 200_000);
   });
 
-  it("separa lo libre de lo que queda tras la cuota de las metas", () => {
+  it("calcula la cuota pendiente de las metas con fecha límite", () => {
     const m = meta({ id: "m1", fechaLimite: "2027-09-21" });
     const r = componerResumen(entrada({ metas: [m] }));
     assert.ok(r.cuotaMetasPendiente > 0);
-    assert.ok((r.porDiaTrasMetas ?? 0) < (r.porDia ?? 0));
   });
 });
 
@@ -450,5 +439,53 @@ describe("agruparPorCategoria", () => {
       movimiento({ tipo: "ahorro", categoria: "ahorro", monto: 999_999 }),
     ]);
     assert.deepEqual(r.map((c) => c.categoria), ["gasolina", "mercado"]);
+  });
+});
+
+describe("gastos programados una sola vez (cumpleaños, aniversarios)", () => {
+  // Hoy es 21 de septiembre de 2026 (ver `entrada`).
+  const cumple = recordatorio({ titulo: "Cumpleaños de mamá", fecha: "2026-11-15", dia: 15, montoEstimado: 200_000 });
+
+  it("cuenta los días que faltan aunque sea de otro mes", () => {
+    const [r] = calcularRecordatorios([cumple], [], "2026-09-21");
+    assert.equal(r.vencimiento, "2026-11-15");
+    assert.equal(r.diasFaltantes, 55);
+    assert.equal(r.esteMes, false);
+    assert.equal(r.vencido, false);
+  });
+
+  it("no descuenta de lo libre de este mes un gasto de un mes que viene", () => {
+    const r = componerResumen(entrada({ recordatorios: [cumple] }));
+    assert.equal(r.fijosPendientes, 0);
+  });
+
+  it("sí lo descuenta en su propio mes", () => {
+    const r = componerResumen(entrada({ recordatorios: [{ ...cumple, fecha: "2026-09-28", dia: 28 }] }));
+    assert.equal(r.fijosPendientes, 200_000);
+  });
+
+  it("al proyectar su mes, lo cuenta; en otro mes futuro, no", () => {
+    const noviembre = componerResumen(entrada({ mes: "2026-11", recordatorios: [cumple] }));
+    const octubre = componerResumen(entrada({ mes: "2026-10", recordatorios: [cumple] }));
+    assert.equal(noviembre.fijosPendientes, 200_000);
+    assert.equal(octubre.fijosPendientes, 0);
+  });
+
+  it("queda pagado con la marca de su mes aunque se pague antes", () => {
+    const [r] = calcularRecordatorios([{ ...cumple, pagados: ["2026-11"] }], [], "2026-09-21");
+    assert.equal(r.pagado, true);
+  });
+
+  it("vence si pasa su día sin pagarse, y desaparece cuando termina su mes", () => {
+    const pasado = { ...cumple, fecha: "2026-09-10", dia: 10 };
+    const [vencido] = calcularRecordatorios([pasado], [], "2026-09-21");
+    assert.equal(vencido.vencido, true);
+    assert.equal(calcularRecordatorios([pasado], [], "2026-10-01").length, 0);
+  });
+
+  it("avisa por correo cuando entra en el margen de días", () => {
+    const pronto = { ...cumple, fecha: "2026-09-23", dia: 23 };
+    assert.equal(recordatoriosParaAvisar(calcularRecordatorios([pronto], [], "2026-09-21"), 3).length, 1);
+    assert.equal(recordatoriosParaAvisar(calcularRecordatorios([cumple], [], "2026-09-21"), 3).length, 0);
   });
 });

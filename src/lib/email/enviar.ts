@@ -71,7 +71,8 @@ export async function enviarCorreo(correo: CorreoSalida): Promise<ResultadoEnvio
 
     const host = process.env.SMTP_HOST;
     const user = process.env.SMTP_USER;
-    const pass = process.env.SMTP_PASS;
+    // Google muestra la contraseña de aplicación en bloques con espacios.
+    const pass = process.env.SMTP_PASS?.replace(/\s+/g, "");
     if (!host || !user || !pass) {
       return {
         ok: false,
@@ -85,6 +86,10 @@ export async function enviarCorreo(correo: CorreoSalida): Promise<ResultadoEnvio
       port: puerto,
       secure: puerto === 465,
       auth: { user, pass },
+      // Sin esto un SMTP que no responde colgaría la función hasta que Vercel la corte.
+      connectionTimeout: 15_000,
+      greetingTimeout: 15_000,
+      socketTimeout: 30_000,
     });
     const info = await transporte.sendMail({
       from,

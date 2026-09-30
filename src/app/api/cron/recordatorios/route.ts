@@ -1,5 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
+import { consumirLimite } from "@/lib/datos";
 import { ejecutarRecordatorioDiario } from "@/lib/recordatorio-diario";
+import { respuestaLimite } from "@/lib/seguridad";
 import { respuestaError } from "@/lib/validacion";
 
 export const dynamic = "force-dynamic";
@@ -21,9 +23,15 @@ async function manejar(request: Request): Promise<Response> {
   if (!secreto) {
     return Response.json({ error: "Falta CRON_SECRET en el servidor." }, { status: 500 });
   }
+  try {
+    const limite = await consumirLimite("cron:global", 30, 60_000);
+    if (!limite.permitido) return respuestaLimite(limite.reintentarEnS);
+  } catch (error) {
+    return respuestaError(error);
+  }
   const cabecera = request.headers.get("authorization") ?? "";
-  const enUrl = new URL(request.url).searchParams.get("secreto") ?? "";
-  if (!coincide(cabecera, `Bearer ${secreto}`) && !coincide(enUrl, secreto)) {
+  // Solo por cabecera: un secreto en la URL queda en registros e historiales.
+  if (!coincide(cabecera, `Bearer ${secreto}`)) {
     return Response.json({ error: "No autorizado." }, { status: 401 });
   }
 

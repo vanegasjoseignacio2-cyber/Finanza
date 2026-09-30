@@ -101,7 +101,7 @@ export function VistaMovimientos({
                     onClick={() => ir({ cuenta: activa ? "" : c.id })}
                     aria-pressed={activa}
                     className={`tarjeta flex w-full cursor-pointer flex-col gap-1 p-4 text-left transition-colors hover:border-borde ${
-                      activa ? "border-verde/60" : ""
+                      activa ? "border-acento/60" : ""
                     }`}
                   >
                     <span className="flex items-center justify-between gap-2 text-[12.5px] text-tinta-3">
@@ -135,7 +135,7 @@ export function VistaMovimientos({
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
               placeholder="Buscar por nota o categoría, en todos los meses"
-              className="min-h-11 w-full rounded-xl border border-borde bg-fondo-alto pr-3.5 pl-10 text-[15px] text-tinta placeholder:text-tinta-3 focus:border-verde focus:ring-2 focus:ring-verde/30 focus:outline-none"
+              className="min-h-11 w-full rounded-xl border border-borde bg-fondo-alto pr-3.5 pl-10 text-[15px] text-tinta placeholder:text-tinta-3 focus:border-acento focus:ring-2 focus:ring-acento/30 focus:outline-none"
             />
           </form>
 
@@ -181,7 +181,7 @@ export function VistaMovimientos({
               <Link
                 href={filtros.mes ? `/movimientos?mes=${filtros.mes}` : "/movimientos"}
                 onClick={() => setBusqueda("")}
-                className="flex min-h-11 items-center gap-1 rounded-lg px-2 text-tinta-2 hover:text-verde"
+                className="flex min-h-11 items-center gap-1 rounded-lg px-2 text-tinta-2 hover:text-tinta"
               >
                 <X className="size-3.5" aria-hidden="true" />
                 Quitar filtros
@@ -193,7 +193,7 @@ export function VistaMovimientos({
             {[
               { etiqueta: "Gastos", valor: suma("gasto"), clase: "text-tinta" },
               { etiqueta: "Ingresos", valor: suma("ingreso"), clase: "text-verde" },
-              { etiqueta: "A metas (neto)", valor: suma("ahorro", "retiro"), clase: "text-azul" },
+              { etiqueta: "A metas (neto)", valor: suma("ahorro", "retiro"), clase: "text-tinta-2" },
             ].map((d) => (
               <div key={d.etiqueta}>
                 <dt className="text-[12px] text-tinta-3">{d.etiqueta}</dt>

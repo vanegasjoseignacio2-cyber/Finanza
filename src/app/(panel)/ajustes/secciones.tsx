@@ -2,6 +2,7 @@
 
 import {
   Archive,
+  Circle,
   CircleAlert,
   CircleCheck,
   Download,
@@ -21,14 +22,17 @@ import { useState, type FormEvent } from "react";
 import { Icono } from "@/components/iconos";
 import { useAvisos } from "@/components/ui/avisos";
 import { Boton, BotonEnlace } from "@/components/ui/boton";
-import { Campo, Interruptor, Selector } from "@/components/ui/campo";
+import { Campo, Desplegable, Interruptor } from "@/components/ui/campo";
 import { CampoDinero } from "@/components/ui/campo-dinero";
+import { Confirmar } from "@/components/ui/confirmar";
 import { Modal } from "@/components/ui/modal";
 import { Segmentado } from "@/components/ui/segmentado";
 import { Tarjeta } from "@/components/ui/tarjeta";
+import { Tooltip } from "@/components/ui/tooltip";
 import { ICONOS_DISPONIBLES, type Categoria } from "@/lib/categorias";
 import { peticion } from "@/lib/cliente";
 import { pesos } from "@/lib/dinero";
+import { LARGO_MAXIMO_CLAVE, evaluarClave } from "@/lib/politica-clave";
 import type { DiagnosticoCorreo } from "@/lib/email/estado";
 import { fechaCorta, mesActual, nombreMes } from "@/lib/fechas";
 import { sueldoPara } from "@/lib/finanzas";
@@ -62,6 +66,7 @@ const botonIcono =
 /* ─── Sueldo ─────────────────────────────────────────────────────────────── */
 
 export function SeccionSueldo({ sueldos }: { sueldos: TramoSueldo[] }) {
+  const [quitandoTramo, setQuitandoTramo] = useState<string | null>(null);
   const { ocupado, ejecutar } = useAccion();
   const hoy = mesActual();
   const vigente = sueldoPara(sueldos, hoy);
@@ -114,21 +119,37 @@ export function SeccionSueldo({ sueldos }: { sueldos: TramoSueldo[] }) {
                 {t.desde <= "2000-01" ? "Desde siempre" : `Desde ${nombreMes(t.desde)}`}
               </span>
               <span className="ml-auto text-[13.5px] tabular text-tinta">{pesos(t.monto)}</span>
-              <button
-                type="button"
-                className={botonIcono}
-                disabled={ocupado === t.desde}
-                aria-label={`Quitar el sueldo desde ${nombreMes(t.desde)}`}
-                onClick={() =>
-                  ejecutar(t.desde, () => peticion(`/api/ajustes/sueldo?desde=${t.desde}`, { method: "DELETE" }), "Tramo quitado.")
-                }
-              >
-                <Trash2 className="size-4" aria-hidden="true" />
-              </button>
+              <Tooltip texto="Quitar tramo">
+                <button
+                  type="button"
+                  className={botonIcono}
+                  disabled={ocupado === t.desde}
+                  aria-label={`Quitar el sueldo desde ${nombreMes(t.desde)}`}
+                  onClick={() => setQuitandoTramo(t.desde)}
+                >
+                  <Trash2 className="size-4" aria-hidden="true" />
+                </button>
+              </Tooltip>
             </li>
           ))}
         </ul>
       )}
+
+      <Confirmar
+        abierto={quitandoTramo !== null}
+        titulo="¿Quitar este tramo de sueldo?"
+        descripcion={
+          quitandoTramo
+            ? `Desde ${quitandoTramo <= "2000-01" ? "siempre" : nombreMes(quitandoTramo)} se usará el sueldo del tramo anterior.`
+            : ""
+        }
+        accion="Quitar tramo"
+        onConfirmar={async () => {
+          if (!quitandoTramo) return;
+          await ejecutar(quitandoTramo, () => peticion(`/api/ajustes/sueldo?desde=${quitandoTramo}`, { method: "DELETE" }), "Tramo quitado.");
+        }}
+        onCerrar={() => setQuitandoTramo(null)}
+      />
     </Tarjeta>
   );
 }
@@ -144,7 +165,7 @@ const TIPOS_CUENTA: { valor: TipoCuenta; etiqueta: string }[] = [
 export function SeccionCuentas({ cuentas }: { cuentas: CuentaConSaldo[] }) {
   const { ocupado, ejecutar } = useAccion();
   const [editando, setEditando] = useState<CuentaConSaldo | "nueva" | null>(null);
-  const [confirmando, setConfirmando] = useState<string | null>(null);
+  const [confirmando, setConfirmando] = useState<CuentaConSaldo | null>(null);
   const activas = cuentas.filter((c) => !c.archivada);
   const archivadas = cuentas.filter((c) => c.archivada);
 
@@ -173,43 +194,22 @@ export function SeccionCuentas({ cuentas }: { cuentas: CuentaConSaldo[] }) {
             <span className={`shrink-0 text-[14.5px] font-semibold tabular ${c.saldo < 0 ? "text-alerta" : "text-tinta"}`}>
               {pesos(c.saldo)}
             </span>
-            {confirmando === c.id ? (
-              <span className="flex items-center gap-1">
-                <Boton
-                  tamano="sm"
-                  variante="peligro"
-                  cargando={ocupado === c.id}
-                  onClick={async () => {
-                    await ejecutar(
-                      c.id,
-                      () => peticion(`/api/cuentas/${c.id}`, { method: "PATCH", body: JSON.stringify({ archivada: true }) }),
-                      `${c.nombre} archivada.`,
-                    );
-                    setConfirmando(null);
-                  }}
-                >
-                  Archivar
-                </Boton>
-                <Boton tamano="sm" variante="fantasma" onClick={() => setConfirmando(null)}>
-                  No
-                </Boton>
-              </span>
-            ) : (
-              <>
-                <button type="button" className={botonIcono} aria-label={`Editar ${c.nombre}`} onClick={() => setEditando(c)}>
-                  <Pencil className="size-4" aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  className={botonIcono}
-                  aria-label={`Archivar ${c.nombre}`}
-                  disabled={activas.length === 1}
-                  onClick={() => setConfirmando(c.id)}
-                >
-                  <Archive className="size-4" aria-hidden="true" />
-                </button>
-              </>
-            )}
+            <Tooltip texto="Editar">
+              <button type="button" className={botonIcono} aria-label={`Editar ${c.nombre}`} onClick={() => setEditando(c)}>
+                <Pencil className="size-4" aria-hidden="true" />
+              </button>
+            </Tooltip>
+            <Tooltip texto="Archivar">
+              <button
+                type="button"
+                className={botonIcono}
+                aria-label={`Archivar ${c.nombre}`}
+                disabled={activas.length === 1}
+                onClick={() => setConfirmando(c)}
+              >
+                <Archive className="size-4" aria-hidden="true" />
+              </button>
+            </Tooltip>
           </li>
         ))}
       </ul>
@@ -237,6 +237,23 @@ export function SeccionCuentas({ cuentas }: { cuentas: CuentaConSaldo[] }) {
           ))}
         </ul>
       )}
+
+      <Confirmar
+        abierto={confirmando !== null}
+        titulo={`¿Archivar ${confirmando?.nombre ?? ""}?`}
+        descripcion="Deja de aparecer al registrar movimientos. Su historial se conserva y puedes restaurarla cuando quieras."
+        accion="Archivar"
+        icono={<Archive className="size-4" aria-hidden="true" />}
+        onConfirmar={async () => {
+          if (!confirmando) return;
+          await ejecutar(
+            confirmando.id,
+            () => peticion(`/api/cuentas/${confirmando.id}`, { method: "PATCH", body: JSON.stringify({ archivada: true }) }),
+            `${confirmando.nombre} archivada.`,
+          );
+        }}
+        onCerrar={() => setConfirmando(null)}
+      />
 
       <Modal
         abierto={editando !== null}
@@ -304,7 +321,7 @@ function FormularioCuenta({ cuenta, onListo }: { cuenta: CuentaConSaldo | null; 
 const ESTADO_ENVIO: Record<Envio["estado"], { texto: string; clase: string }> = {
   enviado: { texto: "Enviado", clase: "text-verde" },
   error: { texto: "Falló", clase: "text-alerta" },
-  omitido: { texto: "Sin novedades", clase: "text-tinta-3" },
+  omitido: { texto: "Omitido", clase: "text-tinta-3" },
   enviando: { texto: "Enviando", clase: "text-aviso" },
 };
 
@@ -320,7 +337,6 @@ export function SeccionCorreo({
   const { ocupado, ejecutar } = useAccion();
   const [email, setEmail] = useState(ajustes.email);
   const [emailActivo, setEmailActivo] = useState(ajustes.emailActivo);
-  const [enviarSiempre, setEnviarSiempre] = useState(ajustes.enviarSiempre);
   const [respaldoSemanal, setRespaldoSemanal] = useState(ajustes.respaldoSemanal);
   const [diasAviso, setDiasAviso] = useState(ajustes.diasAviso);
   const listo = diagnostico.credenciales && diagnostico.remitente;
@@ -346,7 +362,7 @@ export function SeccionCorreo({
               () =>
                 peticion("/api/ajustes", {
                   method: "PUT",
-                  body: JSON.stringify({ email, emailActivo, enviarSiempre, respaldoSemanal, diasAviso }),
+                  body: JSON.stringify({ email, emailActivo, respaldoSemanal, diasAviso }),
                 }),
               "Ajustes del correo guardados.",
             );
@@ -354,8 +370,8 @@ export function SeccionCorreo({
           className="flex flex-col gap-3"
         >
           <p className="text-[13.5px] leading-relaxed text-tinta-3">
-            Llega cuando vence un pago, cuando hay una alerta seria o el lunes con el respaldo. Siempre abre con lo que puedes
-            gastar por día.
+            Te llega todos los días: lo que tienes por pagar y el recordatorio para anotar tus gastos de hoy. Los
+            lunes lleva el respaldo adjunto.
           </p>
           <Campo
             etiqueta="Correo de destino"
@@ -368,24 +384,20 @@ export function SeccionCorreo({
           />
           <Interruptor etiqueta="Enviar el aviso diario" activo={emailActivo} onCambio={setEmailActivo} />
           <Interruptor
-            etiqueta="Enviar aunque no haya novedades"
-            descripcion="El resumen te llega todos los días."
-            activo={enviarSiempre}
-            onCambio={setEnviarSiempre}
-          />
-          <Interruptor
             etiqueta="Respaldo semanal adjunto"
             descripcion="Cada lunes, con todos tus datos en un archivo."
             activo={respaldoSemanal}
             onCambio={setRespaldoSemanal}
           />
-          <Selector etiqueta="Avisar de un pago" value={String(diasAviso)} onChange={(e) => setDiasAviso(Number(e.target.value))}>
-            {[0, 1, 2, 3, 5, 7, 10].map((d) => (
-              <option key={d} value={d}>
-                {d === 0 ? "El mismo día" : `${d} ${d === 1 ? "día" : "días"} antes`}
-              </option>
-            ))}
-          </Selector>
+          <Desplegable
+            etiqueta="Avisar de un pago"
+            value={String(diasAviso)}
+            onChange={(v) => setDiasAviso(Number(v))}
+            opciones={[0, 1, 2, 3, 5, 7, 10].map((d) => ({
+              valor: String(d),
+              etiqueta: d === 0 ? "El mismo día" : `${d} ${d === 1 ? "día" : "días"} antes`,
+            }))}
+          />
           <div className="flex flex-wrap gap-2">
             <Boton type="submit" cargando={ocupado === "guardar"}>
               Guardar
@@ -482,24 +494,28 @@ export function SeccionCategorias({ categorias }: { categorias: Categoria[] }) {
                 {c.label}
                 {c.personal && <span className="ml-2 text-[11.5px] text-tinta-3 no-underline">propia</span>}
               </span>
-              <button type="button" className={botonIcono} aria-label={`Editar ${c.label}`} onClick={() => setEditando(c)}>
-                <Pencil className="size-4" aria-hidden="true" />
-              </button>
-              <button
-                type="button"
-                className={botonIcono}
-                disabled={ocupado === c.id || c.id === "sueldo"}
-                aria-label={c.oculta ? `Mostrar ${c.label}` : `Ocultar ${c.label}`}
-                onClick={() =>
-                  ejecutar(
-                    c.id,
-                    () => peticion(`/api/categorias/${c.id}`, { method: "PATCH", body: JSON.stringify({ oculta: !c.oculta }) }),
-                    c.oculta ? `${c.label} vuelve a estar disponible.` : `${c.label} oculta. Sus movimientos se conservan.`,
-                  )
-                }
-              >
-                {c.oculta ? <Eye className="size-4" aria-hidden="true" /> : <EyeOff className="size-4" aria-hidden="true" />}
-              </button>
+              <Tooltip texto="Editar">
+                <button type="button" className={botonIcono} aria-label={`Editar ${c.label}`} onClick={() => setEditando(c)}>
+                  <Pencil className="size-4" aria-hidden="true" />
+                </button>
+              </Tooltip>
+              <Tooltip texto={c.oculta ? "Mostrar" : "Ocultar"}>
+                <button
+                  type="button"
+                  className={botonIcono}
+                  disabled={ocupado === c.id || c.id === "sueldo"}
+                  aria-label={c.oculta ? `Mostrar ${c.label}` : `Ocultar ${c.label}`}
+                  onClick={() =>
+                    ejecutar(
+                      c.id,
+                      () => peticion(`/api/categorias/${c.id}`, { method: "PATCH", body: JSON.stringify({ oculta: !c.oculta }) }),
+                      c.oculta ? `${c.label} vuelve a estar disponible.` : `${c.label} oculta. Sus movimientos se conservan.`,
+                    )
+                  }
+                >
+                  {c.oculta ? <Eye className="size-4" aria-hidden="true" /> : <EyeOff className="size-4" aria-hidden="true" />}
+                </button>
+              </Tooltip>
             </li>
           ))}
       </ul>
@@ -586,7 +602,7 @@ function FormularioCategoria({ categoria, onListo }: { categoria: Categoria | nu
               aria-pressed={icono === nombre}
               onClick={() => setIcono(nombre)}
               className={`grid aspect-square min-h-11 cursor-pointer place-items-center rounded-lg border transition-colors ${
-                icono === nombre ? "border-verde bg-verde/10 text-verde" : "border-borde-suave text-tinta-3 hover:text-tinta"
+                icono === nombre ? "border-acento bg-acento/10 text-acento" : "border-borde-suave text-tinta-3 hover:text-tinta"
               }`}
             >
               <Icono nombre={nombre} className="size-4.5" />
@@ -603,31 +619,51 @@ function FormularioCategoria({ categoria, onListo }: { categoria: Categoria | nu
 
 /* ─── Seguridad ──────────────────────────────────────────────────────────── */
 
-export function SeccionSeguridad() {
+export function SeccionSeguridad({ correo }: { correo: string }) {
   const router = useRouter();
   const avisos = useAvisos();
+  const [modalClave, setModalClave] = useState(false);
   const [actual, setActual] = useState("");
   const [nueva, setNueva] = useState("");
   const [confirmacion, setConfirmacion] = useState("");
+  const [ver, setVer] = useState(false);
   const [error, setError] = useState("");
-  const [ocupado, setOcupado] = useState<"clave" | "salir" | "todo" | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const [ocupado, setOcupado] = useState<"salir" | "todo" | null>(null);
+  const [confirmandoSalir, setConfirmandoSalir] = useState(false);
   const [confirmandoTodo, setConfirmandoTodo] = useState(false);
+
+  const requisitos = evaluarClave(nueva, { correo, actual });
+  const cumpleTodo = requisitos.every((r) => r.cumple);
+  const coincide = nueva.length > 0 && nueva === confirmacion;
+  const puedeGuardar = actual.length > 0 && cumpleTodo && coincide && !guardando;
+
+  function limpiar() {
+    setModalClave(false);
+    setActual("");
+    setNueva("");
+    setConfirmacion("");
+    setVer(false);
+    setError("");
+  }
+
+  function cerrarModalClave() {
+    if (!guardando) limpiar();
+  }
 
   async function cambiar(evento: FormEvent) {
     evento.preventDefault();
-    if (nueva !== confirmacion) return setError("La confirmación no coincide con la clave nueva.");
-    setOcupado("clave");
+    if (!puedeGuardar) return;
+    setGuardando(true);
     setError("");
     try {
       await peticion("/api/seguridad/clave", { method: "POST", body: JSON.stringify({ actual, nueva }) });
       avisos.exito("Clave cambiada. Las demás sesiones se cerraron.");
-      setActual("");
-      setNueva("");
-      setConfirmacion("");
+      setGuardando(false);
+      limpiar();
     } catch (e) {
       setError(e instanceof Error ? e.message : "No pudimos cambiar la clave.");
-    } finally {
-      setOcupado(null);
+      setGuardando(false);
     }
   }
 
@@ -645,71 +681,125 @@ export function SeccionSeguridad() {
 
   return (
     <Tarjeta titulo="Seguridad">
-      <form onSubmit={cambiar} className="flex flex-col gap-3">
-        <Campo
-          etiqueta="Clave actual"
-          type="password"
-          autoComplete="current-password"
-          value={actual}
-          onChange={(e) => setActual(e.target.value)}
-          required
-        />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Campo
-            etiqueta="Clave nueva"
-            type="password"
-            autoComplete="new-password"
-            minLength={10}
-            value={nueva}
-            onChange={(e) => setNueva(e.target.value)}
-            ayuda="Mínimo 10 caracteres."
-            required
-          />
-          <Campo
-            etiqueta="Repite la clave nueva"
-            type="password"
-            autoComplete="new-password"
-            value={confirmacion}
-            onChange={(e) => setConfirmacion(e.target.value)}
-            required
-          />
-        </div>
-        {error && (
-          <p role="alert" className="text-[13px] text-alerta">
-            {error}
-          </p>
-        )}
-        <Boton type="submit" variante="secundario" cargando={ocupado === "clave"} className="self-start">
-          <KeyRound className="size-4" aria-hidden="true" />
-          Cambiar clave
-        </Boton>
-      </form>
+      <p className="text-[13px] leading-relaxed text-tinta-2">
+        Sesión de <span className="text-tinta">{correo}</span>. La sesión dura 6 horas.
+      </p>
+      <Boton variante="secundario" className="mt-3" onClick={() => setModalClave(true)}>
+        <KeyRound className="size-4" aria-hidden="true" />
+        Cambiar clave
+      </Boton>
 
       <p className="mt-5 text-[12.5px] leading-relaxed text-tinta-3">
         Tras 5 intentos fallidos seguidos, el acceso se bloquea 15 minutos.
       </p>
 
       <div className="mt-4 flex flex-wrap gap-2 border-t border-borde-suave pt-4">
-        <Boton variante="secundario" cargando={ocupado === "salir"} onClick={() => salir(false)}>
+        <Boton variante="secundario" cargando={ocupado === "salir"} onClick={() => setConfirmandoSalir(true)}>
           <LogOut className="size-4" aria-hidden="true" />
           Cerrar sesión
         </Boton>
-        {confirmandoTodo ? (
-          <span className="flex items-center gap-1">
-            <Boton variante="peligro" cargando={ocupado === "todo"} onClick={() => salir(true)}>
-              Sí, cerrar todas
-            </Boton>
-            <Boton variante="fantasma" onClick={() => setConfirmandoTodo(false)}>
-              No
-            </Boton>
-          </span>
-        ) : (
-          <Boton variante="peligro" onClick={() => setConfirmandoTodo(true)}>
-            <MonitorX className="size-4" aria-hidden="true" />
-            Cerrar en todos los dispositivos
-          </Boton>
-        )}
+        <Boton variante="peligro" cargando={ocupado === "todo"} onClick={() => setConfirmandoTodo(true)}>
+          <MonitorX className="size-4" aria-hidden="true" />
+          Cerrar en todos los dispositivos
+        </Boton>
       </div>
+
+      <Modal
+        abierto={modalClave}
+        titulo="Cambiar clave"
+        descripcion="Al cambiarla, las demás sesiones activas se cerrarán."
+        onCerrar={cerrarModalClave}
+      >
+        <form onSubmit={cambiar} className="flex flex-col gap-3" autoComplete="off">
+          <Campo
+            etiqueta="Clave actual"
+            type={ver ? "text" : "password"}
+            autoComplete="current-password"
+            value={actual}
+            onChange={(e) => setActual(e.target.value)}
+            maxLength={200}
+            required
+          />
+          <Campo
+            etiqueta="Clave nueva"
+            type={ver ? "text" : "password"}
+            autoComplete="new-password"
+            value={nueva}
+            onChange={(e) => setNueva(e.target.value)}
+            maxLength={LARGO_MAXIMO_CLAVE}
+            aria-describedby="requisitos-clave"
+            required
+          />
+          <ul id="requisitos-clave" aria-live="polite" className="flex flex-col gap-1.5 rounded-xl bg-superficie-alta p-3">
+            {requisitos.map((r) => (
+              <li
+                key={r.id}
+                className={`flex items-center gap-2 text-[12.5px] ${r.cumple ? "text-verde" : "text-tinta-3"}`}
+              >
+                {r.cumple ? (
+                  <CircleCheck className="size-3.5 shrink-0" aria-hidden="true" />
+                ) : (
+                  <Circle className="size-3.5 shrink-0" aria-hidden="true" />
+                )}
+                {r.texto}
+                <span className="sr-only">{r.cumple ? " (cumplido)" : " (pendiente)"}</span>
+              </li>
+            ))}
+          </ul>
+          <Campo
+            etiqueta="Repite la clave nueva"
+            type={ver ? "text" : "password"}
+            autoComplete="new-password"
+            value={confirmacion}
+            onChange={(e) => setConfirmacion(e.target.value)}
+            maxLength={LARGO_MAXIMO_CLAVE}
+            error={confirmacion.length > 0 && !coincide ? "No coincide con la clave nueva." : undefined}
+            required
+          />
+          <button
+            type="button"
+            onClick={() => setVer((v) => !v)}
+            className="area-toque flex min-h-11 cursor-pointer items-center gap-1.5 self-start rounded-lg text-[13px] text-tinta-3 transition-colors hover:text-tinta-2"
+          >
+            {ver ? <EyeOff className="size-4" aria-hidden="true" /> : <Eye className="size-4" aria-hidden="true" />}
+            {ver ? "Ocultar claves" : "Mostrar claves"}
+          </button>
+          {error && (
+            <p role="alert" className="text-[13px] text-alerta">
+              {error}
+            </p>
+          )}
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Boton variante="fantasma" onClick={cerrarModalClave} disabled={guardando}>
+              Cancelar
+            </Boton>
+            <Boton type="submit" cargando={guardando} disabled={!puedeGuardar}>
+              <KeyRound className="size-4" aria-hidden="true" />
+              Cambiar clave
+            </Boton>
+          </div>
+        </form>
+      </Modal>
+
+      <Confirmar
+        abierto={confirmandoSalir}
+        titulo="¿Cerrar sesión?"
+        descripcion="Tendrás que iniciar sesión de nuevo en este dispositivo."
+        accion="Cerrar sesión"
+        icono={<LogOut className="size-4" aria-hidden="true" />}
+        onConfirmar={() => salir(false)}
+        onCerrar={() => setConfirmandoSalir(false)}
+      />
+
+      <Confirmar
+        abierto={confirmandoTodo}
+        titulo="¿Cerrar sesión en todos los dispositivos?"
+        descripcion="Se cerrarán todas las sesiones activas, incluida esta. Tendrás que iniciar sesión de nuevo."
+        accion="Cerrar en todos"
+        icono={<MonitorX className="size-4" aria-hidden="true" />}
+        onConfirmar={() => salir(true)}
+        onCerrar={() => setConfirmandoTodo(false)}
+      />
     </Tarjeta>
   );
 }

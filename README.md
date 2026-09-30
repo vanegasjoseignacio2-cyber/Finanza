@@ -27,7 +27,7 @@ del celular vence el 28 y hoy es 23, lo libre ya no lo cuenta como tuyo.
 | **Presupuesto** | Tope mensual por categoría (aviso al 85 %, alerta al pasarse), los pagos fijos y la tendencia de seis meses contra tu ingreso. |
 | **Metas** | Varias metas, con aportes **y retiros**. Ritmo real, proyección y, si tienen fecha, cuánto apartar cada mes. |
 | **Ajustes** | Sueldo con historial, cuentas, categorías propias, correo diario (con el estado de los últimos envíos), clave, sesiones y respaldo. |
-| **Correo diario** | Abre con lo que puedes gastar por día y el mismo desglose. Pagos por vencer o vencidos, alertas y metas. Los lunes lleva adjunto el respaldo completo. |
+| **Correo diario** | Corto: lo que tienes por pagar y el recordatorio de anotar tus gastos de hoy. Los lunes lleva adjunto el respaldo completo. |
 
 ### Reglas que conviene conocer
 
@@ -89,23 +89,19 @@ después de Vercel, y **antes de enviar se reserva el día de forma atómica** e
 la base. Si los dos disparos llegaran al mismo tiempo, solo uno envía (hay una
 prueba de integración que lo comprueba con envíos simultáneos).
 
-El correo no sale todos los días: solo cuando vence un pago, hay una alerta
-seria (por ejemplo, te pasaste de un tope) o es lunes y toca el respaldo. Si
-quieres recibirlo siempre, actívalo en Ajustes. En **Ajustes → Correo diario**
-ves qué pasó los últimos días: enviado, sin novedades o el error exacto.
+El correo sale **todos los días** mientras el aviso esté activo en Ajustes: es
+corto, con lo que tienes por pagar (vencido, hoy, mañana o en los próximos días)
+y el recordatorio para anotar tus gastos de hoy, con un botón directo a
+"Nuevo". Los lunes lleva adjunto el respaldo. En **Ajustes → Correo diario**
+ves qué pasó los últimos días: enviado o el error exacto.
 
 ### Opción C — Un disparador externo gratuito
 
 Servicios como **cron-job.org** o **UptimeRobot** (plan gratuito) pueden llamar
-a la URL una vez al día. Si el servicio no deja poner cabeceras, el endpoint
-también acepta el secreto por query:
-
-```
-https://tu-app.vercel.app/api/cron/recordatorios?secreto=EL_SECRETO
-```
-
-> Es más cómodo, pero el secreto queda escrito en la URL y en los registros del
-> servicio. Prefiere A o B cuando puedas.
+a la URL una vez al día, siempre que dejen poner la cabecera
+`Authorization: Bearer EL_SECRETO`. El secreto **ya no se acepta en la URL**
+(quedaba en registros e historiales): si el servicio no permite cabeceras,
+usa A o B.
 
 ### Dónde alojar la app
 
@@ -161,7 +157,10 @@ openssl rand -base64 32   # AUTH_SECRET
 openssl rand -hex 24      # CRON_SECRET
 ```
 
-`APP_PASSWORD` es la clave con la que entras al panel: elígela larga.
+El usuario no va en variables ni se crea desde la app: la aplicación no tiene
+ruta de registro ni script para crearlo. Se inserta a mano, una sola vez, en la
+colección `usuarios` de Atlas (`_id` = correo en minúsculas, `claveHash` con
+scrypt, `sesionVersion` 0); la clave se cambia después en **Ajustes → Seguridad**.
 
 ### 4. En local
 
@@ -176,7 +175,7 @@ npm run dev          # http://localhost:3000
 2. Pega **todas** las variables de `.env.example` en *Settings → Environment
    Variables* (incluida `CRON_SECRET`, que es lo que activa el cron de Vercel).
 3. Pon `APP_URL` con la URL final del proyecto: es el enlace del botón del correo.
-4. Despliega y entra con tu clave. La pantalla **Hoy** te guía: define el sueldo,
+4. Despliega y entra con tu usuario. La pantalla **Hoy** te guía: define el sueldo,
    agrega tus pagos fijos y crea una meta.
 5. En **Ajustes → Enviar prueba** comprueba que el correo llega. Mira también
    la carpeta de spam la primera vez y marca el remitente como conocido.
@@ -185,8 +184,19 @@ npm run dev          # http://localhost:3000
 
 ## Seguridad
 
-- La primera clave es `APP_PASSWORD`. Desde **Ajustes → Seguridad** puedes
-  cambiarla: se guarda con `scrypt` en la base y desde ese momento manda ella.
+- Se entra con **correo y clave**. El usuario vive en la colección `usuarios`
+  (uno solo, sin registro público) y la clave se guarda con `scrypt`. Se cambia
+  en **Ajustes → Seguridad**. Exige 12+ caracteres con mayúscula,
+  minúscula, número y símbolo, sin tu correo ni palabras comunes.
+- La sesión es un JWT (HS256) en una cookie `__Host-` httpOnly y `Secure`, de
+  6 horas. Las escrituras desde otro origen se rechazan (CSRF).
+- Límites de peticiones por usuario (la identidad sale del token, no de una
+  cabecera). Las cabeceras de IP solo se leen en Vercel, donde las reescribe el
+  borde; fuera de Vercel todos cuentan como un mismo cliente. El login tiene
+  además tope por cuenta y un tope global.
+- Todo es privado: sin sesión, cualquier ruta (existente o no) manda al login o
+  responde 401; las respuestas de la API no se guardan en caché y nada se indexa
+  (`robots.txt`, `noindex`).
 - Cambiar la clave cierra las demás sesiones. También hay un botón para cerrar
   **todas**, incluida la actual (útil si perdiste el celular).
 - Tras 5 intentos fallidos seguidos desde la misma IP, el acceso se bloquea

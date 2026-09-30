@@ -10,6 +10,7 @@ import { Campo } from "@/components/ui/campo";
 
 export function FormularioLogin({ volver }: { volver: string }) {
   const router = useRouter();
+  const [correo, setCorreo] = useState("");
   const [clave, setClave] = useState("");
   const [visible, setVisible] = useState(false);
   const [error, setError] = useState("");
@@ -23,7 +24,7 @@ export function FormularioLogin({ volver }: { volver: string }) {
       const respuesta = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ clave }),
+        body: JSON.stringify({ correo, clave }),
       });
       if (!respuesta.ok) {
         const datos = await respuesta.json().catch(() => ({}));
@@ -61,13 +62,22 @@ export function FormularioLogin({ volver }: { volver: string }) {
 
       <form onSubmit={enviar} className="tarjeta flex flex-col gap-4 p-6">
         <Campo
+          etiqueta="Correo"
+          type="email"
+          value={correo}
+          onChange={(e) => setCorreo(e.target.value)}
+          autoComplete="username"
+          autoFocus
+          required
+          placeholder="tu@correo.com"
+        />
+        <Campo
           etiqueta="Clave de acceso"
           type={visible ? "text" : "password"}
           value={clave}
           onChange={(e) => setClave(e.target.value)}
           error={error || undefined}
           autoComplete="current-password"
-          autoFocus
           required
           placeholder="••••••••"
         />
@@ -85,14 +95,6 @@ export function FormularioLogin({ volver }: { volver: string }) {
           Entrar
         </Boton>
       </form>
-
-      <p className="mt-6 text-center text-[12.5px] leading-relaxed text-tinta-3">
-        La primera clave es la de la variable
-        <span className="mx-1 rounded bg-superficie-alta px-1.5 py-0.5 font-mono text-[11.5px] text-tinta-2">
-          APP_PASSWORD
-        </span>
-        ; después puedes cambiarla en Ajustes.
-      </p>
     </motion.div>
   );
 }

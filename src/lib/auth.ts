@@ -1,7 +1,11 @@
 import { SignJWT, jwtVerify } from "jose";
 
-export const COOKIE_SESION = "finanza_sesion";
-const DURACION_DIAS = 30;
+// El prefijo __Host- obliga al navegador a aceptarla solo por HTTPS, sin
+// dominio y en la raíz: ningún subdominio puede pisarla.
+export const COOKIE_SESION =
+  process.env.NODE_ENV === "production" ? "__Host-finanza_sesion" : "finanza_sesion";
+const DURACION_HORAS = 6;
+const EMISOR = "finanza";
 
 function secreto(): Uint8Array {
   const valor = process.env.AUTH_SECRET;
@@ -13,22 +17,32 @@ function secreto(): Uint8Array {
   return new TextEncoder().encode(valor);
 }
 
-/** `version` ata el token a la versión de sesión vigente: al subirla, caen todos. */
-export async function crearSesion(version: number): Promise<string> {
+/**
+ * El token lleva el correo del usuario como sujeto y `version`, la versión de
+ * sesión vigente: al subirla en la base, caen todos los tokens.
+ */
+export async function crearSesion(correo: string, version: number): Promise<string> {
   return new SignJWT({ v: version })
     .setProtectedHeader({ alg: "HS256" })
-    .setSubject("finanza")
+    .setSubject(correo)
+    .setIssuer(EMISOR)
     .setIssuedAt()
-    .setExpirationTime(`${DURACION_DIAS}d`)
+    .setExpirationTime(`${DURACION_HORAS}h`)
     .sign(secreto());
 }
 
-/** Verifica firma y caducidad. Devuelve la versión de sesión del token. */
-export async function leerSesion(token: string | undefined): Promise<{ version: number } | null> {
+/** Verifica firma y caducidad. Devuelve el usuario y la versión de sesión del token. */
+export async function leerSesion(
+  token: string | undefined,
+): Promise<{ correo: string; version: number } | null> {
   if (!token) return null;
   try {
-    const { payload } = await jwtVerify(token, secreto(), { subject: "finanza" });
-    return { version: typeof payload.v === "number" ? payload.v : 0 };
+    const { payload } = await jwtVerify(token, secreto(), {
+      issuer: EMISOR,
+      algorithms: ["HS256"],
+    });
+    if (!payload.sub || typeof payload.v !== "number") return null;
+    return { correo: payload.sub, version: payload.v };
   } catch {
     return null;
   }
@@ -44,5 +58,5 @@ export const opcionesCookie = {
   sameSite: "lax" as const,
   secure: process.env.NODE_ENV === "production",
   path: "/",
-  maxAge: DURACION_DIAS * 24 * 60 * 60,
+  maxAge: DURACION_HORAS * 60 * 60,
 };

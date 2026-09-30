@@ -197,7 +197,7 @@ describe("capa de datos contra MongoDB", { skip: omitir }, () => {
   });
 
   it("dos disparos simultáneos del cron mandan un solo correo", async () => {
-    await datos.guardarAjustes({ email: "yo@ejemplo.com", enviarSiempre: true });
+    await datos.guardarAjustes({ email: "yo@ejemplo.com" });
     let enviados = 0;
     const enviar = async () => {
       enviados++;
@@ -215,7 +215,7 @@ describe("capa de datos contra MongoDB", { skip: omitir }, () => {
   });
 
   it("registra el error del proveedor para mostrarlo en Ajustes", async () => {
-    await datos.guardarAjustes({ email: "yo@ejemplo.com", enviarSiempre: true });
+    await datos.guardarAjustes({ email: "yo@ejemplo.com" });
     const r = await diario.ejecutarRecordatorioDiario({
       enviar: async () => ({ ok: false, proveedor: "smtp" as const, error: "535 credenciales" }),
     });
@@ -233,8 +233,37 @@ describe("capa de datos contra MongoDB", { skip: omitir }, () => {
     assert.equal(await datos.bloqueadoHasta("ip"), null);
   });
 
+  it("limita las peticiones por cubo y ventana, incluso en paralelo", async () => {
+    const resultados = await Promise.all(
+      Array.from({ length: 8 }, () => datos.consumirLimite("prueba", 5, 60_000)),
+    );
+    assert.equal(resultados.filter((r) => r.permitido).length, 5);
+    assert.ok(resultados.every((r) => r.reintentarEnS >= 1 && r.reintentarEnS <= 60));
+    assert.equal((await datos.consumirLimite("otro", 5, 60_000)).permitido, true);
+  });
+
+  it("cambiar la clave sube la versión de sesión y solo existe el usuario registrado", async () => {
+    assert.equal(await datos.buscarUsuario("nadie@ejemplo.com"), null);
+    await (await db.colecciones.usuarios()).insertOne({
+      _id: "yo@ejemplo.com",
+      claveHash: "scrypt$a$b",
+      sesionVersion: 0,
+      creadoEn: new Date().toISOString(),
+    });
+    assert.equal(await datos.incrementarVersionSesion("YO@ejemplo.com", "scrypt$c$d"), 1);
+    const usuario = await datos.buscarUsuario(" Yo@Ejemplo.com ");
+    assert.equal(usuario?.claveHash, "scrypt$c$d");
+    assert.equal(usuario?.sesionVersion, 1);
+    await assert.rejects(datos.incrementarVersionSesion("otro@ejemplo.com"));
+  });
+
   it("el respaldo contiene los datos pero nunca la clave", async () => {
-    await datos.incrementarVersionSesion("scrypt$sal$hash");
+    await (await db.colecciones.usuarios()).insertOne({
+      _id: "yo@ejemplo.com",
+      claveHash: "scrypt$sal$hash",
+      sesionVersion: 0,
+      creadoEn: new Date().toISOString(),
+    });
     await datos.crearMovimiento({ tipo: "gasto", categoria: "mercado", monto: 1, fecha: fechas.hoyISO(), nota: "" });
     const texto = await datos.exportarRespaldo();
     assert.ok(!texto.includes("scrypt$"));

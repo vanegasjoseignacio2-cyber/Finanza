@@ -48,7 +48,7 @@ export function Segmentado<T extends string>({
                 <motion.span
                   layoutId={`segmento-${id}`}
                   transition={{ type: "spring", stiffness: 420, damping: 32 }}
-                  className="absolute inset-0 rounded-lg bg-verde"
+                  className="absolute inset-0 rounded-lg bg-acento"
                 />
               )}
               <span className="relative">{opcion.etiqueta}</span>

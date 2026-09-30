@@ -4,7 +4,6 @@ import {
   exportarRespaldo,
   obtenerAjustes,
   obtenerCatalogo,
-  registrarOmitido,
   reservarEnvio,
 } from "./datos";
 import { enviarCorreo, proveedorConfigurado, type Adjunto } from "./email/enviar";
@@ -24,7 +23,7 @@ export interface ResultadoDiario {
 }
 
 interface Opciones {
-  /** Ignora el interruptor de Ajustes, el filtro de novedades y la reserva del día. */
+  /** Ignora el interruptor de Ajustes y la reserva del día. */
   forzar?: boolean;
   /** Dirección alternativa (correo de prueba). */
   destino?: string;
@@ -36,7 +35,8 @@ interface Opciones {
 const LUNES = 1;
 
 /**
- * Lo que ejecuta el cron cada día. Es seguro llamarlo varias veces o desde dos
+ * Lo que ejecuta el cron cada día: los pagos por atender y el recordatorio de
+ * anotar los gastos. Sale todos los días mientras el aviso esté activo. Es seguro llamarlo varias veces o desde dos
  * disparadores a la vez: el envío del día se reserva de forma atómica antes de
  * mandar nada, así que solo una llamada llega a enviar.
  */
@@ -59,25 +59,12 @@ export async function ejecutarRecordatorioDiario(opciones: Opciones = {}): Promi
   const avisos = recordatoriosParaAvisar(resumen.recordatorios, ajustes.diasAviso);
   const conRespaldo = ajustes.respaldoSemanal && diaSemana(hoy) === LUNES;
 
-  // Hay algo que contar si vence un pago, hay una alerta seria o toca respaldo.
-  const hayNovedad =
-    avisos.length > 0 ||
-    resumen.alertas.some((a) => a.tono === "riesgo") ||
-    conRespaldo ||
-    ajustes.enviarSiempre;
-
-  if (!hayNovedad && !forzar) {
-    const motivo = "Sin pagos por vencer ni alertas, y el resumen diario está desactivado.";
-    await registrarOmitido(hoy, motivo);
-    return { enviado: false, motivo };
-  }
-
   if (!forzar && !(await reservarEnvio(hoy))) {
     return { enviado: false, motivo: `El correo de ${hoy} ya se envió o se está enviando.` };
   }
 
   const urlApp = opciones.urlApp || process.env.APP_URL || "http://localhost:3000";
-  const correo = construirCorreoDiario({ resumen, avisos, hoy, urlApp, conRespaldo, catalogo });
+  const correo = construirCorreoDiario({ avisos, hoy, urlApp, conRespaldo, catalogo });
   const adjuntos: Adjunto[] = conRespaldo
     ? [
         {
