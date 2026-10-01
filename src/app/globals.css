@@ -58,6 +58,11 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  /* Nada puede sacar la página de su ancho: en Safari del iPhone un elemento
+     que se pasa, aunque sea por unos píxeles, ensancha la página y la deja con
+     scroll horizontal y descentrada. `clip` (no `hidden`) no crea un contenedor
+     de scroll, así que la barra superior fija sigue funcionando. */
+  overflow-x: clip;
 }
 
 body {
@@ -66,6 +71,8 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  max-width: 100%;
+  overflow-x: clip;
 }
 
 /* Un solo halo, tenue y arriba: profundidad sin ruido. */
