@@ -21,7 +21,7 @@ import { Modal } from "@/components/ui/modal";
 import { Segmentado } from "@/components/ui/segmentado";
 import { peticion } from "@/lib/cliente";
 import { pesos } from "@/lib/dinero";
-import { hoyISO } from "@/lib/fechas";
+import { hoyISO, nombreMes } from "@/lib/fechas";
 import type { Movimiento, TipoMovimiento } from "@/lib/types";
 
 /** Lo que se precarga al abrir: vacío (nuevo), un movimiento (editar) o una copia (repetir). */
@@ -158,6 +158,9 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
   );
   const [monto, setMonto] = useState<number | null>(borrador.monto ?? null);
   const [fecha, setFecha] = useState(borrador.fecha ?? hoyISO());
+  // Una fecha de otro mes no suma en las cifras del mes en curso.
+  const mesDeLaFecha = /^\d{4}-\d{2}/.test(fecha) ? fecha.slice(0, 7) : "";
+  const fueraDelMes = mesDeLaFecha !== "" && mesDeLaFecha !== hoyISO().slice(0, 7);
   const [nota, setNota] = useState(borrador.nota ?? "");
   const [cuentaId, setCuentaId] = useState(
     borrador.cuentaId ??
@@ -221,7 +224,13 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
         body: JSON.stringify(cuerpo),
       });
       if (!editando) guardarUltimo({ tipo, categoria: categoriaEfectiva, cuentaId });
-      avisos.exito(editando ? "Movimiento actualizado." : "Movimiento registrado.");
+      avisos.exito(
+        fueraDelMes
+          ? `Registrado en ${nombreMes(mesDeLaFecha)}, no en el mes en curso. Búscalo en Movimientos, en ese mes.`
+          : editando
+            ? "Movimiento actualizado."
+            : "Movimiento registrado.",
+      );
       onListo();
     } catch (e) {
       setError(e instanceof Error ? e.message : "No pudimos guardar el movimiento.");
@@ -310,6 +319,11 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
           value={fecha}
           max="2100-12-31"
           onChange={(e) => setFecha(e.target.value)}
+          ayuda={
+            fueraDelMes
+              ? `Es de ${nombreMes(mesDeLaFecha)}: no suma en lo de este mes. Cámbiala a hoy si es de ahora.`
+              : undefined
+          }
           required
         />
       </div>
