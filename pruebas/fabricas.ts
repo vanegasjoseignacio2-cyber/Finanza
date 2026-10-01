@@ -18,6 +18,9 @@ export function movimiento(parcial: Partial<Movimiento> = {}): Movimiento {
     cuentaDestinoId: null,
     metaId: null,
     recurrenteId: null,
+    compraId: null,
+    cuota: null,
+    cuotas: null,
     creadoEn: `${fecha}T12:00:00.000Z`,
     ...parcial,
   };
@@ -59,6 +62,7 @@ export function cuenta(parcial: Partial<Cuenta> = {}): Cuenta {
     nombre: "Principal",
     tipo: "corriente",
     saldoInicial: 0,
+    cupo: null,
     archivada: false,
     creadoEn: "2026-01-01T00:00:00.000Z",
     ...parcial,

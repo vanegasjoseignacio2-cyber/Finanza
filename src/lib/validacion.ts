@@ -31,6 +31,18 @@ export function comoMonto(valor: unknown, campo = "monto", permitirCero = false)
   return Math.round(numero);
 }
 
+export const MAX_CUOTAS = 60;
+
+/** Número de cuotas de una compra: vacío = 1 (de contado), entero entre 1 y 60. */
+export function comoCuotas(valor: unknown): number {
+  if (valor === undefined || valor === null || valor === "") return 1;
+  const n = Number(valor);
+  if (!Number.isInteger(n) || n < 1 || n > MAX_CUOTAS) {
+    throw new ErrorValidacion(`Las cuotas deben ser un número entero entre 1 y ${MAX_CUOTAS}.`);
+  }
+  return n;
+}
+
 export function comoDia(valor: unknown): number {
   const dia = Number(valor);
   if (!Number.isInteger(dia) || dia < 1 || dia > 31) {
@@ -47,7 +59,7 @@ export function comoTipo(valor: unknown): TipoMovimiento {
 }
 
 export function comoTipoCuenta(valor: unknown): TipoCuenta {
-  if (valor === "corriente" || valor === "efectivo" || valor === "ahorro") return valor;
+  if (valor === "corriente" || valor === "efectivo" || valor === "ahorro" || valor === "tarjeta") return valor;
   throw new ErrorValidacion("Tipo de cuenta inválido.");
 }
 

@@ -9,6 +9,7 @@ import {
   nombreMes,
   proximoVencimiento,
   sumarMeses,
+  sumarMesesAFecha,
 } from "../src/lib/fechas";
 
 describe("sumarMeses", () => {
@@ -86,5 +87,19 @@ describe("etiquetas", () => {
   it("nombra meses en español", () => {
     assert.equal(nombreMes("2026-09"), "septiembre 2026");
     assert.equal(mesCorto("2026-01"), "ene");
+  });
+});
+
+describe("sumarMesesAFecha", () => {
+  it("mantiene el día y cruza de año", () => {
+    assert.equal(sumarMesesAFecha("2026-09-15", 0), "2026-09-15");
+    assert.equal(sumarMesesAFecha("2026-09-15", 4), "2027-01-15");
+    assert.equal(sumarMesesAFecha("2026-11-30", 14), "2028-01-30");
+  });
+
+  it("un día 31 cae el último día de un mes corto y vuelve al 31 después", () => {
+    assert.equal(sumarMesesAFecha("2026-01-31", 1), "2026-02-28");
+    assert.equal(sumarMesesAFecha("2026-01-31", 2), "2026-03-31");
+    assert.equal(sumarMesesAFecha("2028-01-31", 1), "2028-02-29");
   });
 });

@@ -5,6 +5,7 @@
  */
 import type { DatosMovimiento } from "./datos";
 import {
+  comoCuotas,
   comoDia,
   comoFecha,
   comoFechaOpcional,
@@ -27,6 +28,7 @@ export function datosMovimiento(c: Record<string, unknown>): DatosMovimiento {
     cuentaDestinoId: comoIdOpcional(c.cuentaDestinoId),
     metaId: comoIdOpcional(c.metaId),
     recurrenteId: comoIdOpcional(c.recurrenteId),
+    cuotas: comoCuotas(c.cuotas),
   };
 }
 
@@ -55,9 +57,13 @@ export function datosMeta(c: Record<string, unknown>) {
 }
 
 export function datosCuenta(c: Record<string, unknown>) {
+  const tipo = comoTipoCuenta(c.tipo);
+  const vacio = c.cupo === undefined || c.cupo === null || c.cupo === "";
   return {
     nombre: comoTexto(c.nombre, "nombre", 40),
-    tipo: comoTipoCuenta(c.tipo),
+    tipo,
     saldoInicial: Math.round(Number(c.saldoInicial ?? 0)) || 0,
+    // El cupo solo tiene sentido en una tarjeta de crédito.
+    cupo: tipo === "tarjeta" && !vacio ? comoMonto(c.cupo, "cupo", true) || null : null,
   };
 }

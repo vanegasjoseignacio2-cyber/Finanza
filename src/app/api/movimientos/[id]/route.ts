@@ -17,7 +17,9 @@ export const PUT = protegido<Ctx>(async (request, { params }) => {
   return Response.json({ movimiento });
 });
 
-export const DELETE = protegido<Ctx>(async (_request, { params }) => {
-  await eliminarMovimiento((await params).id);
-  return Response.json({ ok: true });
+/** `?compra=1` borra todas las cuotas de la compra a la que pertenece. */
+export const DELETE = protegido<Ctx>(async (request, { params }) => {
+  const compra = new URL(request.url).searchParams.get("compra") === "1";
+  const eliminados = await eliminarMovimiento((await params).id, { compra });
+  return Response.json({ ok: true, eliminados });
 });

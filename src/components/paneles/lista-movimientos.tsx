@@ -1,6 +1,6 @@
 "use client";
 
-import { Link2, Repeat } from "lucide-react";
+import { CreditCard, Link2, Repeat } from "lucide-react";
 import { useCaptura } from "@/components/captura";
 import { useDatos } from "@/components/datos-panel";
 import { Icono } from "@/components/iconos";
@@ -73,6 +73,14 @@ function Fila({ m, conFecha }: { m: Movimiento; conFecha: boolean }) {
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5 text-[14.5px] text-tinta">
             <span className="truncate">{d.titulo}</span>
+            {m.cuota && m.cuotas && (
+              <Tooltip texto={`Cuota ${m.cuota} de ${m.cuotas} de una compra con tarjeta de crédito`}>
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-superficie-alta px-1.5 py-0.5 text-[11px] text-tinta-2 sm:px-2">
+                  <CreditCard className="size-3" aria-hidden="true" />
+                  {m.cuota}/{m.cuotas}
+                </span>
+              </Tooltip>
+            )}
             {m.recurrenteId && (
               <Tooltip texto="Viene de un pago fijo">
                 <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-superficie-alta px-1.5 py-0.5 text-[11px] text-tinta-2 sm:px-2">

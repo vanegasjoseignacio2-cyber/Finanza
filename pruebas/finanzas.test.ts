@@ -9,6 +9,7 @@ import {
   calcularTendencia,
   componerResumen,
   recordatoriosParaAvisar,
+  repartirCuotas,
   sueldoPara,
   type SumaAgrupada,
 } from "../src/lib/finanzas";
@@ -527,5 +528,35 @@ describe("pagos fijos que empiezan en un mes", () => {
     const calculados = calcularRecordatorios([arriendo], [], "2026-10-06");
     assert.equal(recordatoriosParaAvisar(calculados, 1).length, 1);
     assert.equal(recordatoriosParaAvisar(calcularRecordatorios([arriendo], [], hoy), 1).length, 0);
+  });
+});
+
+describe("compras en cuotas", () => {
+  it("las cuotas suman exactamente el total", () => {
+    for (const [total, n] of [[100_000, 3], [1_000_000, 12], [7, 3], [48_000, 60], [99_999, 7]] as const) {
+      const cuotas = repartirCuotas(total, n);
+      assert.equal(cuotas.length, n);
+      assert.equal(cuotas.reduce((a, b) => a + b, 0), total);
+    }
+  });
+
+  it("lo que sobra de la división va a la primera cuota", () => {
+    assert.deepEqual(repartirCuotas(100_000, 3), [33_334, 33_333, 33_333]);
+    assert.deepEqual(repartirCuotas(90_000, 3), [30_000, 30_000, 30_000]);
+    assert.deepEqual(repartirCuotas(50_000, 1), [50_000]);
+  });
+
+  it("el saldo de una tarjeta refleja de una vez toda la deuda", () => {
+    const tarjeta = cuenta({ id: "tc", tipo: "tarjeta", cupo: 2_000_000 });
+    const [conSaldo] = calcularSaldos([tarjeta], [suma({ tipo: "gasto", cuentaId: "tc", total: 600_000 })]);
+    assert.equal(conSaldo.saldo, -600_000);
+  });
+
+  it("cada mes solo cuenta su cuota como gastado", () => {
+    const septiembre = movimiento({ monto: 100_000, fecha: "2026-09-30", cuota: 1, cuotas: 3, compraId: "c1" });
+    const octubre = movimiento({ monto: 100_000, fecha: "2026-10-30", cuota: 2, cuotas: 3, compraId: "c1" });
+    const resumen = componerResumen(entrada({ mes: "2026-10", hoy: "2026-10-05", movimientosMes: [octubre] }));
+    assert.equal(resumen.gastado, 100_000);
+    assert.ok(septiembre.mes !== octubre.mes);
   });
 });

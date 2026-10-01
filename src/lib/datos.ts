@@ -13,10 +13,11 @@ import {
   type PortadaDoc,
   type RecordatorioDoc,
 } from "./db";
-import { diasDelMes, hoyISO, mesActual, sumarMeses } from "./fechas";
+import { diasDelMes, hoyISO, mesActual, sumarMeses, sumarMesesAFecha } from "./fechas";
 import {
   componerResumen,
   cuentaPrincipal,
+  repartirCuotas,
   sueldoPara,
   type FilaMensual,
   type SumaAgrupada,
@@ -252,6 +253,7 @@ function aCuenta(doc: CuentaDoc): Cuenta {
     nombre: doc.nombre,
     tipo: doc.tipo,
     saldoInicial: doc.saldoInicial ?? 0,
+    cupo: doc.cupo ?? null,
     archivada: doc.archivada ?? false,
     creadoEn: doc.creadoEn,
   };
@@ -285,16 +287,17 @@ export async function crearCuenta(datos: {
   nombre: string;
   tipo: TipoCuenta;
   saldoInicial: number;
+  cupo?: number | null;
 }): Promise<Cuenta> {
   await listarCuentas();
-  const doc: CuentaDoc = { _id: new ObjectId(), ...datos, archivada: false, creadoEn: ahora() };
+  const doc: CuentaDoc = { _id: new ObjectId(), ...datos, cupo: datos.cupo ?? null, archivada: false, creadoEn: ahora() };
   await (await colecciones.cuentas()).insertOne(doc);
   return aCuenta(doc);
 }
 
 export async function actualizarCuenta(
   id: string,
-  cambios: Partial<Pick<Cuenta, "nombre" | "tipo" | "saldoInicial" | "archivada">>,
+  cambios: Partial<Pick<Cuenta, "nombre" | "tipo" | "saldoInicial" | "cupo" | "archivada">>,
 ): Promise<Cuenta> {
   if (cambios.archivada) {
     const activas = (await listarCuentas()).filter((c) => !c.archivada && c.id !== id);
@@ -424,6 +427,9 @@ function aMovimiento(doc: MovimientoDoc, principalId: string): Movimiento {
     cuentaDestinoId: doc.cuentaDestinoId ?? null,
     metaId: doc.metaId ?? null,
     recurrenteId: doc.recurrenteId ?? null,
+    compraId: doc.compraId ?? null,
+    cuota: doc.cuota ?? null,
+    cuotas: doc.cuotas ?? null,
     creadoEn: doc.creadoEn,
   };
 }
@@ -499,6 +505,8 @@ export interface DatosMovimiento {
   cuentaDestinoId?: string | null;
   metaId?: string | null;
   recurrenteId?: string | null;
+  /** Solo para un gasto con tarjeta de crédito: lo divide en tantas cuotas mensuales. */
+  cuotas?: number;
 }
 
 /**
@@ -569,10 +577,41 @@ async function prepararMovimiento(
 }
 
 export async function crearMovimiento(datos: DatosMovimiento): Promise<Movimiento> {
+  const cuotas = datos.cuotas ?? 1;
   const listo = await prepararMovimiento(datos);
+  if (cuotas > 1) return crearCompraEnCuotas(listo, cuotas);
   const doc: MovimientoDoc = { _id: new ObjectId(), ...listo, creadoEn: ahora() };
   await (await colecciones.movimientos()).insertOne(doc);
   return aMovimiento(doc, await idPrincipal());
+}
+
+/**
+ * Una compra con tarjeta de crédito en cuotas se guarda como una cuota por mes,
+ * cada una un gasto normal en su mes. Así las cifras de cada mes (gastado,
+ * presupuestos, lo libre) cuentan solo lo que toca pagar ese mes, y el saldo de
+ * la tarjeta refleja de una vez toda la deuda. La primera cuota cae en la fecha
+ * de la compra.
+ */
+async function crearCompraEnCuotas(
+  listo: Omit<MovimientoDoc, "_id" | "creadoEn">,
+  cuotas: number,
+): Promise<Movimiento> {
+  if (listo.tipo !== "gasto") throw new ErrorValidacion("Solo un gasto se puede dividir en cuotas.");
+  const cuenta = (await listarCuentas()).find((c) => c.id === listo.cuentaId);
+  if (cuenta?.tipo !== "tarjeta") {
+    throw new ErrorValidacion("Las cuotas solo aplican a una cuenta de tipo tarjeta de crédito.");
+  }
+  if (listo.recurrenteId) throw new ErrorValidacion("Un pago fijo no se divide en cuotas.");
+  if (listo.monto < cuotas) throw new ErrorValidacion("El monto debe alcanzar para al menos $1 por cuota.");
+
+  const compraId = new ObjectId().toHexString();
+  const creadoEn = ahora();
+  const docs: MovimientoDoc[] = repartirCuotas(listo.monto, cuotas).map((monto, i) => {
+    const fecha = sumarMesesAFecha(listo.fecha, i);
+    return { _id: new ObjectId(), ...listo, monto, fecha, mes: fecha.slice(0, 7), compraId, cuota: i + 1, cuotas, creadoEn };
+  });
+  await (await colecciones.movimientos()).insertMany(docs);
+  return aMovimiento(docs[0], await idPrincipal());
 }
 
 export async function actualizarMovimiento(id: string, datos: DatosMovimiento): Promise<Movimiento> {
@@ -586,9 +625,18 @@ export async function actualizarMovimiento(id: string, datos: DatosMovimiento): 
   return aMovimiento(doc, await idPrincipal());
 }
 
-export async function eliminarMovimiento(id: string): Promise<void> {
-  const res = await (await colecciones.movimientos()).deleteOne({ _id: oid(id, "ese movimiento") });
+/** Borra un movimiento; con `compra`, todas las cuotas de su compra. Devuelve cuántos borró. */
+export async function eliminarMovimiento(id: string, opciones: { compra?: boolean } = {}): Promise<number> {
+  const col = await colecciones.movimientos();
+  const _id = oid(id, "ese movimiento");
+  if (opciones.compra) {
+    const doc = await col.findOne({ _id }, { projection: { compraId: 1 } });
+    if (!doc) throw new ErrorNoEncontrado("No encontramos ese movimiento.");
+    if (doc.compraId) return (await col.deleteMany({ compraId: doc.compraId })).deletedCount;
+  }
+  const res = await col.deleteOne({ _id });
   if (res.deletedCount !== 1) throw new ErrorNoEncontrado("No encontramos ese movimiento.");
+  return 1;
 }
 
 /* ─── Pagos fijos (recordatorios) ────────────────────────────────────────── */

@@ -10,13 +10,16 @@
  */
 export type TipoMovimiento = "gasto" | "ingreso" | "ahorro" | "retiro" | "transferencia";
 
-export type TipoCuenta = "corriente" | "efectivo" | "ahorro";
+export type TipoCuenta = "corriente" | "efectivo" | "ahorro" | "tarjeta";
 
 export interface Cuenta {
   id: string;
   nombre: string;
   tipo: TipoCuenta;
+  /** En una tarjeta de crédito es negativo cuando ya se debía algo al empezar. */
   saldoInicial: number;
+  /** Cupo total de una tarjeta de crédito; null si no se indicó. */
+  cupo: number | null;
   archivada: boolean;
   creadoEn: string;
 }
@@ -43,6 +46,11 @@ export interface Movimiento {
   metaId: string | null;
   /** Pago fijo al que corresponde este gasto, si lo hay. */
   recurrenteId: string | null;
+  /** Compra en cuotas: todas sus cuotas comparten este identificador. */
+  compraId: string | null;
+  /** Número de esta cuota (1..cuotas) y total de cuotas; null si no es una compra en cuotas. */
+  cuota: number | null;
+  cuotas: number | null;
   creadoEn: string;
 }
 

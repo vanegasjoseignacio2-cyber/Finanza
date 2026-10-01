@@ -45,7 +45,18 @@ del celular vence el 28 y hoy es 23, lo libre ya no lo cuenta como tuyo.
 - **El ritmo de una meta se mide sobre todos los meses** desde el primer aporte,
   también los meses sin aporte. Si no, la proyección sería optimista.
 - **Los saldos de las cuentas** son el saldo inicial más todo lo registrado en
-  esa cuenta. Si no registras algo, el saldo no lo sabe.
+  esa cuenta, **de todos los meses**: no es lo mismo que lo del mes que estás
+  viendo. Si no registras algo, el saldo no lo sabe.
+- **Tarjeta de crédito y cuotas.** Una cuenta de tipo *Tarjeta de crédito* (con
+  cupo opcional) muestra lo que debes y lo que te queda disponible. Al registrar
+  un gasto con ella eliges en cuántas cuotas (1 a 60 meses): se guarda **una
+  cuota por mes**, cada una un gasto normal en su mes, con la primera en la
+  fecha de la compra. Así lo libre, los topes y el gastado de cada mes cuentan
+  solo la cuota que toca pagar ese mes, mientras el saldo de la tarjeta refleja
+  de una vez toda la deuda. Lo que sobra al dividir se suma a la primera cuota.
+  No calcula intereses: si los hay, escribe el total con intereses como monto.
+  Para pagar la tarjeta, usa **Transferir** desde tu banco hacia ella. Al
+  eliminar una cuota puedes borrar solo esa o toda la compra.
 
 ## Cómo ejecutarlo a diario sin VPS y sin pagar
 

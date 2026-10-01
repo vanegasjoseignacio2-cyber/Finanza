@@ -574,3 +574,14 @@ export function generarAlertas(r: Resumen, catalogo: Catalogo = CATALOGO_BASE): 
 
   return alertas;
 }
+
+/**
+ * Divide un total en `cuotas` partes enteras que suman exactamente el total. Lo
+ * que sobra de la división (los pesos que no alcanzan para una cuota más) se
+ * suma a la primera, así ninguna queda de menos.
+ */
+export function repartirCuotas(total: number, cuotas: number): number[] {
+  const base = Math.floor(total / cuotas);
+  const resto = total - base * cuotas;
+  return Array.from({ length: cuotas }, (_, i) => (i === 0 ? base + resto : base));
+}

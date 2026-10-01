@@ -32,7 +32,7 @@ const TIPOS = [
   { valor: "transferencia", etiqueta: "Transferencias" },
 ];
 
-const TIPO_CUENTA = { corriente: "Cuenta", efectivo: "Efectivo", ahorro: "Ahorro" } as const;
+const TIPO_CUENTA = { corriente: "Cuenta", efectivo: "Efectivo", ahorro: "Ahorro", tarjeta: "Tarjeta" } as const;
 
 export function VistaMovimientos({
   movimientos,
@@ -108,16 +108,23 @@ export function VistaMovimientos({
                       <span className="truncate">{c.nombre}</span>
                       <span className="shrink-0">{TIPO_CUENTA[c.tipo]}</span>
                     </span>
-                    <span className={`font-display text-[19px] font-semibold tabular ${c.saldo < 0 ? "text-alerta" : "text-tinta"}`}>
-                      {pesos(c.saldo)}
+                    <span
+                      className={`font-display text-[19px] font-semibold tabular ${
+                        c.saldo < 0 && c.tipo !== "tarjeta" ? "text-alerta" : "text-tinta"
+                      }`}
+                    >
+                      {c.tipo === "tarjeta" ? (c.saldo < 0 ? `Debes ${pesos(-c.saldo)}` : pesos(c.saldo)) : pesos(c.saldo)}
                     </span>
+                    {c.tipo === "tarjeta" && c.cupo ? (
+                      <span className="text-[12px] text-tinta-3">Disponible {pesos(Math.max(0, c.cupo + c.saldo))}</span>
+                    ) : null}
                   </button>
                 </li>
               );
             })}
           </ul>
           <p className="mt-2 text-[12.5px] text-tinta-3">
-            Saldos según lo que registras. Toca una cuenta para ver solo sus movimientos.
+            Saldos según todo lo que registras, de todos los meses (no solo el mes que ves abajo). Toca una cuenta para ver solo sus movimientos.
           </p>
         </section>
       )}

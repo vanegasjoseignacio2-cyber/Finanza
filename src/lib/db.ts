@@ -22,6 +22,9 @@ export interface MovimientoDoc {
   cuentaDestinoId?: string | null;
   metaId?: string | null;
   recurrenteId?: string | null;
+  compraId?: string | null;
+  cuota?: number | null;
+  cuotas?: number | null;
   creadoEn: string;
 }
 
@@ -43,6 +46,7 @@ export interface CuentaDoc {
   nombre: string;
   tipo: TipoCuenta;
   saldoInicial: number;
+  cupo?: number | null;
   archivada: boolean;
   predeterminada?: boolean;
   creadoEn: string;

@@ -22,7 +22,7 @@ export const GET = protegido(async () => {
   const meta = new Map(metas.map((m) => [m.id, m.nombre]));
 
   const filas = [
-    ["fecha", "tipo", "categoria", "monto", "cuenta", "cuenta_destino", "meta", "nota"].map(celda).join(","),
+    ["fecha", "tipo", "categoria", "monto", "cuenta", "cuenta_destino", "meta", "nota", "cuota"].map(celda).join(","),
     ...movimientos.map((m) =>
       [
         m.fecha,
@@ -33,6 +33,7 @@ export const GET = protegido(async () => {
         m.cuentaDestinoId ? (cuenta.get(m.cuentaDestinoId) ?? "") : "",
         m.metaId ? (meta.get(m.metaId) ?? "") : "",
         m.nota,
+        m.cuota ? `${m.cuota}/${m.cuotas}` : "",
       ]
         .map(celda)
         .join(","),

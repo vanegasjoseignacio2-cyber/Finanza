@@ -12,6 +12,7 @@ import { BSON, MongoClient } from "mongodb";
 import * as datos from "../../src/lib/datos";
 import * as db from "../../src/lib/db";
 import * as fechas from "../../src/lib/fechas";
+import { calcularSaldos } from "../../src/lib/finanzas";
 import * as diario from "../../src/lib/recordatorio-diario";
 
 const URI = process.env.MONGODB_URI_PRUEBAS;
@@ -304,6 +305,80 @@ describe("capa de datos contra MongoDB", { skip: omitir }, () => {
       await datos.eliminarMovimiento(auto.id);
       assert.equal((await datos.acreditarSueldoSiToca("2026-10-13")).acreditado, false);
       assert.equal((await sueldos("2026-10")).length, 0);
+    });
+  });
+
+  describe("tarjeta de crédito y cuotas", () => {
+    async function conTarjeta() {
+      const tarjeta = await datos.crearCuenta({ nombre: "Visa", tipo: "tarjeta", saldoInicial: 0, cupo: 5_000_000 });
+      return tarjeta;
+    }
+    const compra = (tarjeta: { id: string }, parcial: Partial<Parameters<typeof datos.crearMovimiento>[0]> = {}) =>
+      datos.crearMovimiento({
+        tipo: "gasto",
+        categoria: "mercado",
+        monto: 100_000,
+        fecha: "2026-09-30",
+        nota: "Nevera",
+        cuentaId: tarjeta.id,
+        cuotas: 3,
+        ...parcial,
+      });
+
+    it("guarda el cupo y solo en una tarjeta", async () => {
+      const t = await conTarjeta();
+      assert.equal(t.tipo, "tarjeta");
+      assert.equal(t.cupo, 5_000_000);
+      const banco = await datos.crearCuenta({ nombre: "Banco", tipo: "corriente", saldoInicial: 0, cupo: null });
+      assert.equal(banco.cupo, null);
+    });
+
+    it("una compra en 3 cuotas crea una por mes, que suman el total", async () => {
+      const t = await conTarjeta();
+      const primera = await compra(t);
+      assert.equal(primera.cuota, 1);
+      assert.equal(primera.cuotas, 3);
+      const todas = (await datos.listarMovimientos({ cuentaId: t.id })).sort((a, b) => a.fecha.localeCompare(b.fecha));
+      assert.deepEqual(todas.map((m) => m.fecha), ["2026-09-30", "2026-10-30", "2026-11-30"]);
+      assert.deepEqual(todas.map((m) => m.monto), [33_334, 33_333, 33_333]);
+      assert.deepEqual(todas.map((m) => m.mes), ["2026-09", "2026-10", "2026-11"]);
+      assert.equal(new Set(todas.map((m) => m.compraId)).size, 1);
+      assert.deepEqual(todas.map((m) => m.cuota), [1, 2, 3]);
+    });
+
+    it("cada mes solo ve su cuota, y el saldo de la tarjeta es toda la deuda", async () => {
+      const t = await conTarjeta();
+      await compra(t);
+      assert.equal((await datos.listarMovimientos({ mes: "2026-10" })).length, 1);
+      const [cuenta] = (await datos.listarCuentas()).filter((c) => c.id === t.id);
+      const saldos = calcularSaldos([cuenta], await datos.sumasHistoricas());
+      assert.equal(saldos[0].saldo, -100_000);
+    });
+
+    it("rechaza cuotas fuera de una tarjeta, de un gasto o del rango", async () => {
+      const t = await conTarjeta();
+      const banco = await datos.crearCuenta({ nombre: "Banco", tipo: "corriente", saldoInicial: 0 });
+      await assert.rejects(compra(banco), /tarjeta de crédito/);
+      await assert.rejects(datos.crearMovimiento({ tipo: "ingreso", categoria: "sueldo", monto: 90, fecha: "2026-09-30", nota: "", cuentaId: t.id, cuotas: 3 }), /gasto/);
+      await assert.rejects(compra(t, { monto: 2, cuotas: 3 }), /por cuota/);
+    });
+
+    it("borra solo una cuota o toda la compra", async () => {
+      const t = await conTarjeta();
+      await compra(t);
+      const cuotas = await datos.listarMovimientos({ cuentaId: t.id });
+      assert.equal(await datos.eliminarMovimiento(cuotas[0].id), 1);
+      assert.equal((await datos.listarMovimientos({ cuentaId: t.id })).length, 2);
+      const otra = (await datos.listarMovimientos({ cuentaId: t.id }))[0];
+      assert.equal(await datos.eliminarMovimiento(otra.id, { compra: true }), 2);
+      assert.equal((await datos.listarMovimientos({ cuentaId: t.id })).length, 0);
+    });
+
+    it("sin cuotas, una compra con tarjeta es un gasto normal", async () => {
+      const t = await conTarjeta();
+      const m = await compra(t, { cuotas: 1 });
+      assert.equal(m.cuota, null);
+      assert.equal((await datos.listarMovimientos({ cuentaId: t.id })).length, 1);
     });
   });
 

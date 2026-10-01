@@ -108,3 +108,13 @@ export function mesesEntre(desde: string, hasta: string): number {
 export function diaSemana(fecha: string): number {
   return new Date(`${fecha}T00:00:00Z`).getUTCDay();
 }
+
+/**
+ * La misma fecha `n` meses después. Parte siempre de la fecha original, así un
+ * día 31 cae el 28 en febrero y vuelve al 31 en marzo (no se arrastra el ajuste).
+ */
+export function sumarMesesAFecha(fecha: string, n: number): string {
+  const mes = sumarMeses(fecha.slice(0, 7), n);
+  const dia = Math.min(Number(fecha.slice(8, 10)), diasDelMes(mes));
+  return `${mes}-${String(dia).padStart(2, "0")}`;
+}

@@ -196,6 +196,7 @@ const TIPOS_CUENTA: { valor: TipoCuenta; etiqueta: string }[] = [
   { valor: "corriente", etiqueta: "Banco" },
   { valor: "efectivo", etiqueta: "Efectivo" },
   { valor: "ahorro", etiqueta: "Ahorro" },
+  { valor: "tarjeta", etiqueta: "Tarjeta de crédito" },
 ];
 
 export function SeccionCuentas({ cuentas }: { cuentas: CuentaConSaldo[] }) {
@@ -216,7 +217,7 @@ export function SeccionCuentas({ cuentas }: { cuentas: CuentaConSaldo[] }) {
       }
     >
       <p className="mb-3 text-[13.5px] leading-relaxed text-tinta-3">
-        Dónde está tu plata: banco, Nequi, efectivo, ahorro. El saldo es el inicial más todo lo que registras en esa cuenta.
+        Dónde está tu plata: banco, Nequi, efectivo, ahorro o una tarjeta de crédito. El saldo es el inicial más todo lo que registras en esa cuenta, de todos los meses. Una compra en cuotas con tarjeta cuenta cada mes solo su cuota; para pagar la tarjeta usa Transferir desde tu banco hacia ella.
       </p>
       <ul className="flex flex-col">
         {activas.map((c) => (
@@ -224,11 +225,20 @@ export function SeccionCuentas({ cuentas }: { cuentas: CuentaConSaldo[] }) {
             <div className="min-w-0 flex-1">
               <p className="truncate text-[14.5px] text-tinta">{c.nombre}</p>
               <p className="text-[12.5px] text-tinta-3">
-                {TIPOS_CUENTA.find((t) => t.valor === c.tipo)?.etiqueta} · inicial {pesos(c.saldoInicial)}
+                {TIPOS_CUENTA.find((t) => t.valor === c.tipo)?.etiqueta}
+                {c.tipo === "tarjeta"
+                  ? c.cupo
+                    ? ` · cupo ${pesos(c.cupo)} · disponible ${pesos(Math.max(0, c.cupo + c.saldo))}`
+                    : ""
+                  : ` · inicial ${pesos(c.saldoInicial)}`}
               </p>
             </div>
-            <span className={`shrink-0 text-[14.5px] font-semibold tabular ${c.saldo < 0 ? "text-alerta" : "text-tinta"}`}>
-              {pesos(c.saldo)}
+            <span
+              className={`shrink-0 text-[14.5px] font-semibold tabular ${
+                c.saldo < 0 && c.tipo !== "tarjeta" ? "text-alerta" : "text-tinta"
+              }`}
+            >
+              {c.tipo === "tarjeta" ? (c.saldo < 0 ? `Debes ${pesos(-c.saldo)}` : pesos(c.saldo)) : pesos(c.saldo)}
             </span>
             <Tooltip texto="Editar">
               <button type="button" className={botonIcono} aria-label={`Editar ${c.nombre}`} onClick={() => setEditando(c)}>
@@ -312,7 +322,15 @@ function FormularioCuenta({ cuenta, onListo }: { cuenta: CuentaConSaldo | null; 
   const { ocupado, ejecutar } = useAccion();
   const [nombre, setNombre] = useState(cuenta?.nombre ?? "");
   const [tipo, setTipo] = useState<TipoCuenta>(cuenta?.tipo ?? "corriente");
-  const [saldoInicial, setSaldoInicial] = useState<number | null>(cuenta?.saldoInicial ?? null);
+  const [saldoInicial, setSaldoInicial] = useState<number | null>(
+    cuenta && cuenta.tipo !== "tarjeta" ? cuenta.saldoInicial : null,
+  );
+  // En una tarjeta se escribe lo que se debe (positivo) y se guarda como saldo negativo.
+  const [deuda, setDeuda] = useState<number | null>(
+    cuenta?.tipo === "tarjeta" && cuenta.saldoInicial < 0 ? -cuenta.saldoInicial : null,
+  );
+  const [cupo, setCupo] = useState<number | null>(cuenta?.cupo ?? null);
+  const esTarjeta = tipo === "tarjeta";
 
   async function guardar(evento: FormEvent) {
     evento.preventDefault();
@@ -321,7 +339,12 @@ function FormularioCuenta({ cuenta, onListo }: { cuenta: CuentaConSaldo | null; 
       () =>
         peticion(cuenta ? `/api/cuentas/${cuenta.id}` : "/api/cuentas", {
           method: cuenta ? "PATCH" : "POST",
-          body: JSON.stringify({ nombre, tipo, saldoInicial: saldoInicial ?? 0 }),
+          body: JSON.stringify({
+            nombre,
+            tipo,
+            saldoInicial: esTarjeta ? -(deuda ?? 0) : (saldoInicial ?? 0),
+            cupo: esTarjeta ? cupo : null,
+          }),
         }),
       cuenta ? "Cuenta actualizada." : "Cuenta creada.",
     );
@@ -338,13 +361,30 @@ function FormularioCuenta({ cuenta, onListo }: { cuenta: CuentaConSaldo | null; 
         maxLength={40}
         required
       />
-      <Segmentado etiqueta="Tipo" opciones={TIPOS_CUENTA} valor={tipo} onCambio={setTipo} />
-      <CampoDinero
-        etiqueta="Saldo inicial"
-        valor={saldoInicial}
-        onCambio={setSaldoInicial}
-        ayuda="Lo que tenía la cuenta antes de empezar a registrar en la app."
-      />
+      <Segmentado etiqueta="Tipo" opciones={TIPOS_CUENTA} valor={tipo} onCambio={setTipo} columnas="grid-cols-2" />
+      {esTarjeta ? (
+        <>
+          <CampoDinero
+            etiqueta="Cupo de la tarjeta (opcional)"
+            valor={cupo}
+            onCambio={setCupo}
+            ayuda="Con él la app te dice cuánto te queda disponible."
+          />
+          <CampoDinero
+            etiqueta="Lo que ya debes hoy (opcional)"
+            valor={deuda}
+            onCambio={setDeuda}
+            ayuda="Saldo pendiente antes de empezar a registrar en la app."
+          />
+        </>
+      ) : (
+        <CampoDinero
+          etiqueta="Saldo inicial"
+          valor={saldoInicial}
+          onCambio={setSaldoInicial}
+          ayuda="Lo que tenía la cuenta antes de empezar a registrar en la app."
+        />
+      )}
       <Boton type="submit" cargando={ocupado === "cuenta"} className="self-end">
         {cuenta ? "Guardar cambios" : "Crear cuenta"}
       </Boton>

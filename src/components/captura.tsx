@@ -1,11 +1,12 @@
 "use client";
 
-import { Link2, Trash2 } from "lucide-react";
+import { CreditCard, Link2, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type FormEvent,
@@ -21,7 +22,8 @@ import { Modal } from "@/components/ui/modal";
 import { Segmentado } from "@/components/ui/segmentado";
 import { peticion } from "@/lib/cliente";
 import { pesos } from "@/lib/dinero";
-import { hoyISO, nombreMes } from "@/lib/fechas";
+import { hoyISO, nombreMes, sumarMesesAFecha } from "@/lib/fechas";
+import { repartirCuotas } from "@/lib/finanzas";
 import type { Movimiento, TipoMovimiento } from "@/lib/types";
 
 /** Lo que se precarga al abrir: vacío (nuevo), un movimiento (editar) o una copia (repetir). */
@@ -36,6 +38,10 @@ export interface Borrador {
   cuentaDestinoId?: string | null;
   metaId?: string | null;
   recurrenteId?: string | null;
+  /** Si es una cuota de una compra con tarjeta: a qué compra, cuál cuota y de cuántas. */
+  compraId?: string | null;
+  cuota?: number | null;
+  cuotas?: number | null;
 }
 
 interface Captura {
@@ -88,7 +94,8 @@ export function ProveedorCaptura({ children }: { children: ReactNode }) {
     () => ({
       abrir,
       editar: (m) => abrir({ ...m }),
-      repetir: (m) => abrir({ ...m, id: undefined, fecha: hoyISO(), recurrenteId: null }),
+      repetir: (m) =>
+        abrir({ ...m, id: undefined, fecha: hoyISO(), recurrenteId: null, compraId: null, cuota: null, cuotas: null }),
     }),
     [abrir],
   );
@@ -141,6 +148,25 @@ const AYUDA_TIPO: Record<TipoMovimiento, string> = {
   transferencia: "Mueves plata entre tus cuentas. No cuenta como gasto ni ingreso.",
 };
 
+/**
+ * La fecha de hoy, que se renueva sola: un formulario que queda abierto de un
+ * día para otro (muy común en el celular) debe proponer la fecha de hoy, no la
+ * de cuando se abrió.
+ */
+function useHoy(): string {
+  const [hoy, setHoy] = useState(hoyISO);
+  useEffect(() => {
+    const actualizar = () => setHoy(hoyISO());
+    const reloj = window.setInterval(actualizar, 60_000);
+    document.addEventListener("visibilitychange", actualizar);
+    return () => {
+      window.clearInterval(reloj);
+      document.removeEventListener("visibilitychange", actualizar);
+    };
+  }, []);
+  return hoy;
+}
+
 export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador; onListo: () => void }) {
   const { catalogo, cuentas, metas, pendientes } = useDatos();
   const avisos = useAvisos();
@@ -157,10 +183,13 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
       (ultimo.categoria && catalogo.existe(ultimo.categoria) ? ultimo.categoria : "mercado"),
   );
   const [monto, setMonto] = useState<number | null>(borrador.monto ?? null);
-  const [fecha, setFecha] = useState(borrador.fecha ?? hoyISO());
+  const [cuotasTexto, setCuotasTexto] = useState("1");
+  const hoyAhora = useHoy();
+  const [fechaElegida, setFecha] = useState<string | null>(borrador.fecha ?? null);
+  const fecha = fechaElegida ?? hoyAhora;
   // Una fecha de otro mes no suma en las cifras del mes en curso.
   const mesDeLaFecha = /^\d{4}-\d{2}/.test(fecha) ? fecha.slice(0, 7) : "";
-  const fueraDelMes = mesDeLaFecha !== "" && mesDeLaFecha !== hoyISO().slice(0, 7);
+  const fueraDelMes = mesDeLaFecha !== "" && mesDeLaFecha !== hoyAhora.slice(0, 7);
   const [nota, setNota] = useState(borrador.nota ?? "");
   const [cuentaId, setCuentaId] = useState(
     borrador.cuentaId ??
@@ -186,6 +215,22 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
       ? "sueldo"
       : (catalogo.gasto[0]?.id ?? "otros");
 
+  // Cuotas: solo un gasto nuevo con una cuenta tipo tarjeta de crédito.
+  const cuentaElegida = cuentasActivas.find((c) => c.id === cuentaId);
+  const conTarjeta = tipo === "gasto" && !editando && cuentaElegida?.tipo === "tarjeta";
+  const nCuotas = conTarjeta ? Math.min(60, Math.max(1, Math.floor(Number(cuotasTexto)) || 1)) : 1;
+  const montosCuota = monto && monto >= nCuotas ? repartirCuotas(monto, nCuotas) : [];
+  const resumenCuotas =
+    nCuotas > 1 && montosCuota.length > 0
+      ? `${nCuotas} cuotas${
+          montosCuota[0] === montosCuota[1]
+            ? ` de ${pesos(montosCuota[1])}`
+            : `: la primera de ${pesos(montosCuota[0])} y ${nCuotas - 1} de ${pesos(montosCuota[1])}`
+        }, una por mes, de ${nombreMes(fecha.slice(0, 7))} a ${nombreMes(sumarMesesAFecha(fecha, nCuotas - 1).slice(0, 7))}. Cada mes solo cuenta su cuota.`
+      : nCuotas > 1
+        ? "Escribe el monto total de la compra."
+        : "En una sola cuota. Si es a plazos, elige en cuántos meses.";
+
   // Pagos fijos que este gasto podría estar pagando.
   const vinculables = pendientes.filter((r) => r.activo && (!r.pagado || r.id === borrador.recurrenteId));
   const sugerido = vinculables.find((r) => r.categoria && r.categoria === categoriaEfectiva);
@@ -205,6 +250,10 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
       setError("Escribe un monto mayor que cero.");
       return;
     }
+    if (nCuotas > 1 && monto < nCuotas) {
+      setError("El monto debe alcanzar para al menos $1 por cuota.");
+      return;
+    }
     setGuardando(true);
     setError("");
     const cuerpo = {
@@ -217,6 +266,7 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
       cuentaDestinoId: tipo === "transferencia" ? cuentaDestinoId : null,
       metaId: tipo === "ahorro" || tipo === "retiro" ? metaId : null,
       recurrenteId: tipo === "gasto" && recurrenteId ? recurrenteId : null,
+      cuotas: nCuotas > 1 ? nCuotas : undefined,
     };
     try {
       await peticion(editando ? `/api/movimientos/${borrador.id}` : "/api/movimientos", {
@@ -225,7 +275,9 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
       });
       if (!editando) guardarUltimo({ tipo, categoria: categoriaEfectiva, cuentaId });
       avisos.exito(
-        fueraDelMes
+        nCuotas > 1
+          ? `Compra registrada en ${nCuotas} cuotas. Verás una por mes.`
+          : fueraDelMes
           ? `Registrado en ${nombreMes(mesDeLaFecha)}, no en el mes en curso. Búscalo en Movimientos, en ese mes.`
           : editando
             ? "Movimiento actualizado."
@@ -239,11 +291,11 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
     }
   }
 
-  async function borrar() {
+  async function borrar(compra = false) {
     setGuardando(true);
     try {
-      await peticion(`/api/movimientos/${borrador.id}`, { method: "DELETE" });
-      avisos.exito("Movimiento eliminado.");
+      await peticion(`/api/movimientos/${borrador.id}${compra ? "?compra=1" : ""}`, { method: "DELETE" });
+      avisos.exito(compra ? "Compra eliminada con todas sus cuotas." : "Movimiento eliminado.");
       onListo();
     } catch (e) {
       setError(e instanceof Error ? e.message : "No pudimos eliminar el movimiento.");
@@ -367,6 +419,42 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
         )
       )}
 
+      {conTarjeta && (
+        <div className="flex flex-col gap-2">
+          <Campo
+            etiqueta="Cuotas (meses)"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={60}
+            value={cuotasTexto}
+            onChange={(e) => setCuotasTexto(e.target.value)}
+            ayuda={resumenCuotas}
+            error={error && monto && monto < nCuotas ? error : undefined}
+          />
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Cuotas frecuentes">
+            {[1, 3, 6, 12, 24, 36].map((n) => (
+              <Boton
+                key={n}
+                type="button"
+                tamano="sm"
+                variante={nCuotas === n ? "secundario" : "fantasma"}
+                onClick={() => setCuotasTexto(String(n))}
+              >
+                {n === 1 ? "1 cuota" : `${n} meses`}
+              </Boton>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {editando && borrador.cuota && borrador.cuotas ? (
+        <p className="flex items-start gap-2 rounded-xl border border-borde-suave bg-fondo-alto p-3 text-[13px] leading-relaxed text-tinta-2">
+          <CreditCard className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          Esta es la cuota {borrador.cuota} de {borrador.cuotas} de una compra con tarjeta. Aquí cambias solo esta cuota.
+        </p>
+      ) : null}
+
       {tipo === "gasto" && vinculables.length > 0 && (
         <div>
           <Selector
@@ -428,13 +516,35 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
         </Boton>
       </div>
 
-      <Confirmar
-        abierto={confirmandoBorrado}
-        titulo="¿Eliminar este movimiento?"
-        descripcion="Se borra del mes y de los saldos. No se puede deshacer."
-        onConfirmar={borrar}
-        onCerrar={() => setConfirmandoBorrado(false)}
-      />
+      {borrador.compraId && borrador.cuotas ? (
+        <Modal
+          abierto={confirmandoBorrado}
+          titulo="¿Eliminar esta compra en cuotas?"
+          descripcion={`Es la cuota ${borrador.cuota} de ${borrador.cuotas}. Puedes borrar solo esta cuota o toda la compra. No se puede deshacer.`}
+          onCerrar={() => (guardando ? undefined : setConfirmandoBorrado(false))}
+        >
+          <div className="flex flex-col gap-2">
+            <Boton type="button" variante="peligro" cargando={guardando} onClick={() => borrar(true)}>
+              <Trash2 className="size-4" aria-hidden="true" />
+              Eliminar las {borrador.cuotas} cuotas
+            </Boton>
+            <Boton type="button" variante="secundario" disabled={guardando} onClick={() => borrar(false)}>
+              Eliminar solo esta cuota
+            </Boton>
+            <Boton type="button" variante="fantasma" disabled={guardando} onClick={() => setConfirmandoBorrado(false)}>
+              Cancelar
+            </Boton>
+          </div>
+        </Modal>
+      ) : (
+        <Confirmar
+          abierto={confirmandoBorrado}
+          titulo="¿Eliminar este movimiento?"
+          descripcion="Se borra del mes y de los saldos. No se puede deshacer."
+          onConfirmar={() => borrar(false)}
+          onCerrar={() => setConfirmandoBorrado(false)}
+        />
+      )}
     </form>
   );
 }
