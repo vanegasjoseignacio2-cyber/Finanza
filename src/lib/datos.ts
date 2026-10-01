@@ -13,16 +13,18 @@ import {
   type PortadaDoc,
   type RecordatorioDoc,
 } from "./db";
-import { diasDelMes, hoyISO, mesActual, sumarMesesAFecha } from "./fechas";
+import { diasDelMes, hoyISO, mesActual } from "./fechas";
 import {
   componerResumen,
   cuentaPrincipal,
+  calendarioCuotas,
   repartirCuotas,
   sueldoPara,
   type FilaMensual,
   type SumaAgrupada,
 } from "./finanzas";
 import type {
+  CuotaProxima,
   Ajustes,
   CategoriaPersonal,
   Cuenta,
@@ -254,6 +256,7 @@ function aCuenta(doc: CuentaDoc): Cuenta {
     tipo: doc.tipo,
     saldoInicial: doc.saldoInicial ?? 0,
     cupo: doc.cupo ?? null,
+    diaPago: doc.diaPago ?? null,
     archivada: doc.archivada ?? false,
     creadoEn: doc.creadoEn,
   };
@@ -288,16 +291,17 @@ export async function crearCuenta(datos: {
   tipo: TipoCuenta;
   saldoInicial: number;
   cupo?: number | null;
+  diaPago?: number | null;
 }): Promise<Cuenta> {
   await listarCuentas();
-  const doc: CuentaDoc = { _id: new ObjectId(), ...datos, cupo: datos.cupo ?? null, archivada: false, creadoEn: ahora() };
+  const doc: CuentaDoc = { _id: new ObjectId(), ...datos, cupo: datos.cupo ?? null, diaPago: datos.diaPago ?? null, archivada: false, creadoEn: ahora() };
   await (await colecciones.cuentas()).insertOne(doc);
   return aCuenta(doc);
 }
 
 export async function actualizarCuenta(
   id: string,
-  cambios: Partial<Pick<Cuenta, "nombre" | "tipo" | "saldoInicial" | "cupo" | "archivada">>,
+  cambios: Partial<Pick<Cuenta, "nombre" | "tipo" | "saldoInicial" | "cupo" | "diaPago" | "archivada">>,
 ): Promise<Cuenta> {
   if (cambios.archivada) {
     const activas = (await listarCuentas()).filter((c) => !c.archivada && c.id !== id);
@@ -507,6 +511,8 @@ export interface DatosMovimiento {
   recurrenteId?: string | null;
   /** Solo para un gasto con tarjeta de crédito: lo divide en tantas cuotas mensuales. */
   cuotas?: number;
+  /** Con cuotas: si la primera se cobra este mes o el siguiente. */
+  primeraCuota?: "este" | "siguiente";
 }
 
 /**
@@ -579,7 +585,7 @@ async function prepararMovimiento(
 export async function crearMovimiento(datos: DatosMovimiento): Promise<Movimiento> {
   const cuotas = datos.cuotas ?? 1;
   const listo = await prepararMovimiento(datos);
-  if (cuotas > 1) return crearCompraEnCuotas(listo, cuotas);
+  if (cuotas > 1) return crearCompraEnCuotas(listo, cuotas, datos.primeraCuota === "siguiente" ? 1 : 0);
   const doc: MovimientoDoc = { _id: new ObjectId(), ...listo, creadoEn: ahora() };
   await (await colecciones.movimientos()).insertOne(doc);
   return aMovimiento(doc, await idPrincipal());
@@ -589,12 +595,14 @@ export async function crearMovimiento(datos: DatosMovimiento): Promise<Movimient
  * Una compra con tarjeta de crédito en cuotas se guarda como una cuota por mes,
  * cada una un gasto normal en su mes. Así las cifras de cada mes (gastado,
  * presupuestos, lo libre) cuentan solo lo que toca pagar ese mes, y el saldo de
- * la tarjeta refleja de una vez toda la deuda. La primera cuota cae en la fecha
- * de la compra.
+ * la tarjeta refleja de una vez toda la deuda. Cada cuota cae el día de pago de
+ * la tarjeta (o el de la compra, si no se indicó) y la primera, este mes o el
+ * siguiente.
  */
 async function crearCompraEnCuotas(
   listo: Omit<MovimientoDoc, "_id" | "creadoEn">,
   cuotas: number,
+  mesesDespues: 0 | 1,
 ): Promise<Movimiento> {
   if (listo.tipo !== "gasto") throw new ErrorValidacion("Solo un gasto se puede dividir en cuotas.");
   const cuenta = (await listarCuentas()).find((c) => c.id === listo.cuentaId);
@@ -606,8 +614,9 @@ async function crearCompraEnCuotas(
 
   const compraId = new ObjectId().toHexString();
   const creadoEn = ahora();
+  const fechas = calendarioCuotas(listo.fecha, cuotas, cuenta.diaPago, mesesDespues);
   const docs: MovimientoDoc[] = repartirCuotas(listo.monto, cuotas).map((monto, i) => {
-    const fecha = sumarMesesAFecha(listo.fecha, i);
+    const fecha = fechas[i];
     return { _id: new ObjectId(), ...listo, monto, fecha, mes: fecha.slice(0, 7), compraId, cuota: i + 1, cuotas, creadoEn };
   });
   await (await colecciones.movimientos()).insertMany(docs);
@@ -797,10 +806,23 @@ export async function serieMensual(desde: string, hasta: string): Promise<FilaMe
   return filas.map((f) => ({ ...f._id, total: f.total }));
 }
 
+/** Lo que se paga en cuotas de tarjeta en los meses posteriores a `mes`. */
+export async function cuotasProximas(mes: string, limite = 12): Promise<CuotaProxima[]> {
+  const filas = await (await colecciones.movimientos())
+    .aggregate<{ _id: string; total: number; cantidad: number }>([
+      { $match: { cuota: { $ne: null }, mes: { $gt: mes } } },
+      { $group: { _id: "$mes", total: { $sum: "$monto" }, cantidad: { $sum: 1 } } },
+      { $sort: { _id: 1 } },
+      { $limit: limite },
+    ])
+    .toArray();
+  return filas.map((f) => ({ mes: f._id, total: f.total, cantidad: f.cantidad }));
+}
+
 export async function calcularResumen(mes = mesActual()): Promise<Resumen> {
   const hoy = hoyISO();
   const mesReal = hoy.slice(0, 7);
-  const [ajustes, movimientosMes, movimientosMesReal, recordatorios, metas, cuentas, presupuestos, sumas, serie, catalogo] =
+  const [ajustes, movimientosMes, movimientosMesReal, recordatorios, metas, cuentas, presupuestos, sumas, serie, proximas, catalogo] =
     await Promise.all([
       obtenerAjustes(),
       listarMovimientos({ mes }),
@@ -811,6 +833,7 @@ export async function calcularResumen(mes = mesActual()): Promise<Resumen> {
       listarPresupuestos(),
       sumasHistoricas(),
       serieMensual("2000-01", mes),
+      cuotasProximas(mes),
       obtenerCatalogo(),
     ]);
 
@@ -826,6 +849,7 @@ export async function calcularResumen(mes = mesActual()): Promise<Resumen> {
     presupuestos,
     sumas,
     serie,
+    cuotasProximas: proximas,
     catalogo,
   });
 }

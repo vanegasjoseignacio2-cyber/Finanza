@@ -60,8 +60,14 @@ del celular vence el 28 y hoy es 23, lo libre ya no lo cuenta como tuyo.
   solo la cuota que toca pagar ese mes, mientras el saldo de la tarjeta refleja
   de una vez toda la deuda. Lo que sobra al dividir se suma a la primera cuota.
   No calcula intereses: si los hay, escribe el total con intereses como monto.
-  Para pagar la tarjeta, usa **Transferir** desde tu banco hacia ella. Al
-  eliminar una cuota puedes borrar solo esa o toda la compra.
+  Cada cuota **sale de lo libre (tu sueldo) del mes en que cae**. En la cuenta
+  puedes indicar el **día en que pagas la tarjeta**: cada cuota cae ese día, y
+  al comprar eliges si la primera es este mes o el siguiente (el formulario
+  muestra el calendario completo). En **Hoy**, el recuadro *Tarjetas de crédito*
+  tiene el botón **Agregar tarjeta de crédito**, lo que debes y tienes
+  disponible, las cuotas de este mes con su fecha, **Pagar la tarjeta** (una
+  transferencia ya llena desde tu banco) y lo que viene en los próximos meses.
+  Al eliminar una cuota puedes borrar solo esa o toda la compra.
 
 ## Cómo ejecutarlo a diario sin VPS y sin pagar
 

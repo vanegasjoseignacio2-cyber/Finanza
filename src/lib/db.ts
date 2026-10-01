@@ -47,6 +47,7 @@ export interface CuentaDoc {
   tipo: TipoCuenta;
   saldoInicial: number;
   cupo?: number | null;
+  diaPago?: number | null;
   archivada: boolean;
   predeterminada?: boolean;
   creadoEn: string;

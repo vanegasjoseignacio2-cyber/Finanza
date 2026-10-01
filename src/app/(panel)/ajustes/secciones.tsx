@@ -20,6 +20,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { Icono } from "@/components/iconos";
+import { FormularioCuenta, TIPOS_CUENTA } from "@/components/paneles/formulario-cuenta";
 import { useAvisos } from "@/components/ui/avisos";
 import { Boton, BotonEnlace } from "@/components/ui/boton";
 import { Campo, Desplegable, Interruptor } from "@/components/ui/campo";
@@ -36,7 +37,7 @@ import { LARGO_MAXIMO_CLAVE, evaluarClave } from "@/lib/politica-clave";
 import type { DiagnosticoCorreo } from "@/lib/email/estado";
 import { fechaCorta, mesActual, nombreMes } from "@/lib/fechas";
 import { sueldoPara } from "@/lib/finanzas";
-import type { Ajustes, CuentaConSaldo, Envio, TipoCuenta, TramoSueldo } from "@/lib/types";
+import type { Ajustes, CuentaConSaldo, Envio, TramoSueldo } from "@/lib/types";
 
 /** Ejecuta una petición, avisa y refresca los datos del servidor. */
 function useAccion() {
@@ -192,13 +193,6 @@ export function SeccionSueldo({ sueldos, diaSueldo }: { sueldos: TramoSueldo[]; 
 
 /* ─── Cuentas ────────────────────────────────────────────────────────────── */
 
-const TIPOS_CUENTA: { valor: TipoCuenta; etiqueta: string }[] = [
-  { valor: "corriente", etiqueta: "Banco" },
-  { valor: "efectivo", etiqueta: "Efectivo" },
-  { valor: "ahorro", etiqueta: "Ahorro" },
-  { valor: "tarjeta", etiqueta: "Tarjeta de crédito" },
-];
-
 export function SeccionCuentas({ cuentas }: { cuentas: CuentaConSaldo[] }) {
   const { ocupado, ejecutar } = useAccion();
   const [editando, setEditando] = useState<CuentaConSaldo | "nueva" | null>(null);
@@ -208,6 +202,8 @@ export function SeccionCuentas({ cuentas }: { cuentas: CuentaConSaldo[] }) {
 
   return (
     <Tarjeta
+      id="cuentas"
+      className="scroll-mt-24"
       titulo="Cuentas"
       accion={
         <Boton tamano="sm" variante="secundario" onClick={() => setEditando("nueva")}>
@@ -226,6 +222,7 @@ export function SeccionCuentas({ cuentas }: { cuentas: CuentaConSaldo[] }) {
               <p className="truncate text-[14.5px] text-tinta">{c.nombre}</p>
               <p className="text-[12.5px] text-tinta-3">
                 {TIPOS_CUENTA.find((t) => t.valor === c.tipo)?.etiqueta}
+                {c.tipo === "tarjeta" && c.diaPago ? ` · paga el día ${c.diaPago}` : ""}
                 {c.tipo === "tarjeta"
                   ? c.cupo
                     ? ` · cupo ${pesos(c.cupo)} · disponible ${pesos(Math.max(0, c.cupo + c.saldo))}`
@@ -315,80 +312,6 @@ export function SeccionCuentas({ cuentas }: { cuentas: CuentaConSaldo[] }) {
         )}
       </Modal>
     </Tarjeta>
-  );
-}
-
-function FormularioCuenta({ cuenta, onListo }: { cuenta: CuentaConSaldo | null; onListo: () => void }) {
-  const { ocupado, ejecutar } = useAccion();
-  const [nombre, setNombre] = useState(cuenta?.nombre ?? "");
-  const [tipo, setTipo] = useState<TipoCuenta>(cuenta?.tipo ?? "corriente");
-  const [saldoInicial, setSaldoInicial] = useState<number | null>(
-    cuenta && cuenta.tipo !== "tarjeta" ? cuenta.saldoInicial : null,
-  );
-  // En una tarjeta se escribe lo que se debe (positivo) y se guarda como saldo negativo.
-  const [deuda, setDeuda] = useState<number | null>(
-    cuenta?.tipo === "tarjeta" && cuenta.saldoInicial < 0 ? -cuenta.saldoInicial : null,
-  );
-  const [cupo, setCupo] = useState<number | null>(cuenta?.cupo ?? null);
-  const esTarjeta = tipo === "tarjeta";
-
-  async function guardar(evento: FormEvent) {
-    evento.preventDefault();
-    const ok = await ejecutar(
-      "cuenta",
-      () =>
-        peticion(cuenta ? `/api/cuentas/${cuenta.id}` : "/api/cuentas", {
-          method: cuenta ? "PATCH" : "POST",
-          body: JSON.stringify({
-            nombre,
-            tipo,
-            saldoInicial: esTarjeta ? -(deuda ?? 0) : (saldoInicial ?? 0),
-            cupo: esTarjeta ? cupo : null,
-          }),
-        }),
-      cuenta ? "Cuenta actualizada." : "Cuenta creada.",
-    );
-    if (ok) onListo();
-  }
-
-  return (
-    <form onSubmit={guardar} className="flex flex-col gap-4">
-      <Campo
-        etiqueta="Nombre"
-        value={nombre}
-        onChange={(e) => setNombre(e.target.value)}
-        placeholder="Bancolombia, Nequi, efectivo..."
-        maxLength={40}
-        required
-      />
-      <Segmentado etiqueta="Tipo" opciones={TIPOS_CUENTA} valor={tipo} onCambio={setTipo} columnas="grid-cols-2" />
-      {esTarjeta ? (
-        <>
-          <CampoDinero
-            etiqueta="Cupo de la tarjeta (opcional)"
-            valor={cupo}
-            onCambio={setCupo}
-            ayuda="Con él la app te dice cuánto te queda disponible."
-          />
-          <CampoDinero
-            etiqueta="Lo que ya debes hoy (opcional)"
-            valor={deuda}
-            onCambio={setDeuda}
-            ayuda="Saldo pendiente antes de empezar a registrar en la app."
-          />
-        </>
-      ) : (
-        <CampoDinero
-          etiqueta="Saldo inicial"
-          valor={saldoInicial}
-          onCambio={setSaldoInicial}
-          ayuda="Lo que tenía la cuenta antes de empezar a registrar en la app."
-        />
-      )}
-      <Boton type="submit" cargando={ocupado === "cuenta"} className="self-end">
-        {cuenta ? "Guardar cambios" : "Crear cuenta"}
-      </Boton>
-    </form>
   );
 }
 

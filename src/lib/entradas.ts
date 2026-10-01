@@ -29,6 +29,7 @@ export function datosMovimiento(c: Record<string, unknown>): DatosMovimiento {
     metaId: comoIdOpcional(c.metaId),
     recurrenteId: comoIdOpcional(c.recurrenteId),
     cuotas: comoCuotas(c.cuotas),
+    primeraCuota: c.primeraCuota === "siguiente" ? ("siguiente" as const) : ("este" as const),
   };
 }
 
@@ -65,5 +66,10 @@ export function datosCuenta(c: Record<string, unknown>) {
     saldoInicial: Math.round(Number(c.saldoInicial ?? 0)) || 0,
     // El cupo solo tiene sentido en una tarjeta de crédito.
     cupo: tipo === "tarjeta" && !vacio ? comoMonto(c.cupo, "cupo", true) || null : null,
+    // El día de pago solo tiene sentido en una tarjeta de crédito.
+    diaPago:
+      tipo === "tarjeta" && c.diaPago !== undefined && c.diaPago !== null && c.diaPago !== ""
+        ? comoDia(c.diaPago)
+        : null,
   };
 }

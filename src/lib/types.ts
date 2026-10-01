@@ -20,6 +20,8 @@ export interface Cuenta {
   saldoInicial: number;
   /** Cupo total de una tarjeta de crédito; null si no se indicó. */
   cupo: number | null;
+  /** Día del mes (1-31) en que se paga la tarjeta: ese día cae cada cuota. */
+  diaPago: number | null;
   archivada: boolean;
   creadoEn: string;
 }
@@ -192,6 +194,12 @@ export interface Envio {
   respaldo?: boolean;
 }
 
+export interface CuotaProxima {
+  mes: string;
+  total: number;
+  cantidad: number;
+}
+
 export interface Resumen {
   mes: string;
   hoy: string;
@@ -219,6 +227,10 @@ export interface Resumen {
   mesesAnteriores: number;
   /** Libre de este mes más lo que sobró antes. */
   totalDisponible: number;
+  /** De lo gastado este mes, lo que son cuotas de compras con tarjeta. */
+  cuotasDelMes: number;
+  /** Lo que se paga en cuotas de tarjeta los meses siguientes, mes por mes. */
+  cuotasProximas: CuotaProxima[];
   diasRestantes: number | null;
   /** Cuota de metas con fecha límite que falta apartar este mes. */
   cuotaMetasPendiente: number;

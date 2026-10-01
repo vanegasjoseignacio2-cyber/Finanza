@@ -62,7 +62,14 @@ export async function borrarCookieSesion(): Promise<void> {
 // La versión vigente se cachea unos segundos para no consultar la base en cada
 // petición. Cerrar todas las sesiones tarda como mucho eso en surtir efecto.
 const CACHE_MS = 15_000;
-const cacheVersion = new Map<string, { valor: number | null; hasta: number }>();
+// Next empaqueta las rutas de la API y las páginas por separado: un Map a nivel
+// de módulo tendría una copia en cada uno, y al cambiar la clave solo se limpiaría
+// la de la API (las páginas seguirían viendo la versión vieja y mandarían al login).
+// En globalThis hay una sola, compartida.
+const global = globalThis as unknown as {
+  _finanzaVersiones?: Map<string, { valor: number | null; hasta: number }>;
+};
+const cacheVersion = (global._finanzaVersiones ??= new Map());
 
 async function versionVigente(correo: string): Promise<number | null> {
   const guardada = cacheVersion.get(correo);

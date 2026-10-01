@@ -8,6 +8,7 @@ import { ListaAlertas } from "@/components/paneles/alertas";
 import { Barra } from "@/components/paneles/barra";
 import { ListaMovimientos } from "@/components/paneles/lista-movimientos";
 import { ListaPagosFijos } from "@/components/paneles/pagos-fijos";
+import { CuotasTarjeta } from "@/components/paneles/cuotas-tarjeta";
 import { BannerProgramados } from "@/components/paneles/programados";
 import { Boton } from "@/components/ui/boton";
 import { Cifra } from "@/components/ui/cifra";
@@ -74,6 +75,9 @@ function Protagonista({ r }: { r: Resumen }) {
       signo: "",
     },
     { etiqueta: "Gastado", valor: r.gastado, signo: "− " },
+    ...(r.cuotasDelMes > 0
+      ? [{ etiqueta: "  de eso, cuotas de tarjeta", valor: r.cuotasDelMes, signo: "", sub: true }]
+      : []),
     { etiqueta: "Ahorro neto", valor: r.ahorroNeto, signo: "− " },
     { etiqueta: "Pagos fijos pendientes", valor: r.fijosPendientes, signo: "− " },
   ];
@@ -149,8 +153,11 @@ function Protagonista({ r }: { r: Resumen }) {
 
       <dl className="mt-6 border-t border-borde-suave pt-3 text-[14px]">
         {filas.map((f) => (
-          <div key={f.etiqueta} className="flex items-center justify-between gap-3 py-1.5">
-            <dt className="text-tinta-3">{f.etiqueta}</dt>
+          <div
+            key={f.etiqueta}
+            className={`flex items-center justify-between gap-3 ${"sub" in f && f.sub ? "py-0.5 pl-4 text-[13px]" : "py-1.5"}`}
+          >
+            <dt className="text-tinta-3">{f.etiqueta.trim()}</dt>
             <dd className="tabular text-tinta-2">
               {f.signo}
               {pesos(f.valor)}
@@ -234,6 +241,8 @@ export function VistaHoy({ resumen: r }: { resumen: Resumen }) {
           )}
         </Tarjeta>
       </div>
+
+      <CuotasTarjeta r={r} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
         <Tarjeta titulo="Para revisar" className="lg:col-span-3" retraso={0.1}>

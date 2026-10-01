@@ -129,7 +129,13 @@ function MenuSelect({
   return (
     <SelectPrimitivo.Root
       value={value === "" ? VACIO : value}
-      onValueChange={(v) => onValueChange(v === VACIO ? "" : v)}
+      onValueChange={(v) => {
+        // Con el menú cerrado, el <select> nativo de Radix no tiene opciones: si el
+        // valor cambia por código, emite un cambio "" que borraría la elección.
+        // Una elección real nunca llega vacía (las opciones vacías usan VACIO).
+        if (v === "") return;
+        onValueChange(v === VACIO ? "" : v);
+      }}
       open={abierto}
       onOpenChange={setAbierto}
       disabled={disabled}

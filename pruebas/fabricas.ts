@@ -63,6 +63,7 @@ export function cuenta(parcial: Partial<Cuenta> = {}): Cuenta {
     tipo: "corriente",
     saldoInicial: 0,
     cupo: null,
+    diaPago: null,
     archivada: false,
     creadoEn: "2026-01-01T00:00:00.000Z",
     ...parcial,

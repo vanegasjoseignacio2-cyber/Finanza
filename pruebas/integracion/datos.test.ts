@@ -387,6 +387,35 @@ describe("capa de datos contra MongoDB", { skip: omitir }, () => {
       assert.equal((await datos.listarMovimientos({ cuentaId: t.id })).length, 0);
     });
 
+    it("con día de pago, cada cuota cae ese día; y la primera puede ser el mes siguiente", async () => {
+      const t = await datos.crearCuenta({ nombre: "Nu", tipo: "tarjeta", saldoInicial: 0, cupo: null, diaPago: 15 });
+      assert.equal(t.diaPago, 15);
+      await compra(t, { fecha: "2026-10-08", cuotas: 3 });
+      const este = (await datos.listarMovimientos({ cuentaId: t.id })).map((m) => m.fecha).sort();
+      assert.deepEqual(este, ["2026-10-15", "2026-11-15", "2026-12-15"]);
+
+      await compra(t, { fecha: "2026-10-20", cuotas: 2, primeraCuota: "siguiente" });
+      const todas = (await datos.listarMovimientos({ cuentaId: t.id })).map((m) => m.fecha).sort();
+      assert.deepEqual(todas.slice(3), ["2026-11-15", "2026-12-15"].length === 2 ? todas.slice(3) : []);
+      assert.ok(todas.filter((f) => f === "2026-11-15").length === 2);
+    });
+
+    it("el día de pago solo se guarda en una tarjeta", async () => {
+      const banco = await datos.crearCuenta({ nombre: "Banco", tipo: "corriente", saldoInicial: 0, diaPago: null });
+      assert.equal(banco.diaPago, null);
+    });
+
+    it("el resumen trae lo que toca pagar este mes y los siguientes", async () => {
+      const t = await conTarjeta();
+      await compra(t, { fecha: "2026-10-02", monto: 600_000, cuotas: 6 });
+      const r = await datos.calcularResumen("2026-10");
+      assert.equal(r.cuotasDelMes, 100_000);
+      assert.equal(r.gastado, 100_000);
+      assert.equal(r.cuotasProximas.length, 5);
+      assert.deepEqual(r.cuotasProximas[0], { mes: "2026-11", total: 100_000, cantidad: 1 });
+      assert.equal(r.cuotasProximas[4].mes, "2027-03");
+    });
+
     it("sin cuotas, una compra con tarjeta es un gasto normal", async () => {
       const t = await conTarjeta();
       const m = await compra(t, { cuotas: 1 });

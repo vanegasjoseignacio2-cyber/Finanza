@@ -22,8 +22,8 @@ import { Modal } from "@/components/ui/modal";
 import { Segmentado } from "@/components/ui/segmentado";
 import { peticion } from "@/lib/cliente";
 import { pesos } from "@/lib/dinero";
-import { hoyISO, nombreMes, sumarMesesAFecha } from "@/lib/fechas";
-import { repartirCuotas } from "@/lib/finanzas";
+import { fechaCorta, hoyISO, nombreMes } from "@/lib/fechas";
+import { calendarioCuotas, repartirCuotas } from "@/lib/finanzas";
 import type { Movimiento, TipoMovimiento } from "@/lib/types";
 
 /** Lo que se precarga al abrir: vacío (nuevo), un movimiento (editar) o una copia (repetir). */
@@ -184,6 +184,7 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
   );
   const [monto, setMonto] = useState<number | null>(borrador.monto ?? null);
   const [cuotasTexto, setCuotasTexto] = useState("1");
+  const [primeraElegida, setPrimeraElegida] = useState<"este" | "siguiente" | null>(null);
   const hoyAhora = useHoy();
   const [fechaElegida, setFecha] = useState<string | null>(borrador.fecha ?? null);
   const fecha = fechaElegida ?? hoyAhora;
@@ -219,14 +220,25 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
   const cuentaElegida = cuentasActivas.find((c) => c.id === cuentaId);
   const conTarjeta = tipo === "gasto" && !editando && cuentaElegida?.tipo === "tarjeta";
   const nCuotas = conTarjeta ? Math.min(60, Math.max(1, Math.floor(Number(cuotasTexto)) || 1)) : 1;
+  const tarjetas = cuentasActivas.filter((c) => c.tipo === "tarjeta");
+  const diaPago = cuentaElegida?.diaPago ?? null;
+  // Si el día de pago de este mes ya pasó, la primera cuota se cobra el mes que viene.
+  const diaDeLaCompra = Number(fecha.slice(8, 10)) || 1;
+  const primeraPorDefecto: "este" | "siguiente" = diaPago !== null && diaPago < diaDeLaCompra ? "siguiente" : "este";
+  const primera = primeraElegida ?? primeraPorDefecto;
   const montosCuota = monto && monto >= nCuotas ? repartirCuotas(monto, nCuotas) : [];
+  const fechasCuotas =
+    nCuotas > 1 && /^\d{4}-\d{2}-\d{2}$/.test(fecha)
+      ? calendarioCuotas(fecha, nCuotas, diaPago, primera === "siguiente" ? 1 : 0)
+      : [];
+  const conAnio = (f: string) => `${fechaCorta(f)} ${f.slice(0, 4)}`;
   const resumenCuotas =
-    nCuotas > 1 && montosCuota.length > 0
+    nCuotas > 1 && montosCuota.length > 0 && fechasCuotas.length > 0
       ? `${nCuotas} cuotas${
           montosCuota[0] === montosCuota[1]
             ? ` de ${pesos(montosCuota[1])}`
             : `: la primera de ${pesos(montosCuota[0])} y ${nCuotas - 1} de ${pesos(montosCuota[1])}`
-        }, una por mes, de ${nombreMes(fecha.slice(0, 7))} a ${nombreMes(sumarMesesAFecha(fecha, nCuotas - 1).slice(0, 7))}. Cada mes solo cuenta su cuota.`
+        }. ${diaPago !== null ? `Pagas el día ${diaPago} de cada mes` : "Una por mes"}: de ${conAnio(fechasCuotas[0])} a ${conAnio(fechasCuotas[fechasCuotas.length - 1])}. Cada cuota se descuenta de lo libre (tu sueldo) del mes en que cae.`
       : nCuotas > 1
         ? "Escribe el monto total de la compra."
         : "En una sola cuota. Si es a plazos, elige en cuántos meses.";
@@ -267,6 +279,7 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
       metaId: tipo === "ahorro" || tipo === "retiro" ? metaId : null,
       recurrenteId: tipo === "gasto" && recurrenteId ? recurrenteId : null,
       cuotas: nCuotas > 1 ? nCuotas : undefined,
+      primeraCuota: nCuotas > 1 ? primera : undefined,
     };
     try {
       await peticion(editando ? `/api/movimientos/${borrador.id}` : "/api/movimientos", {
@@ -419,6 +432,29 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
         )
       )}
 
+      {tipo === "gasto" && !editando && !conTarjeta ? (
+        tarjetas.length > 0 ? (
+          <div className="rounded-xl border border-borde-suave bg-fondo-alto p-3">
+            <p className="flex items-center gap-2 text-[13px] text-tinta-2">
+              <CreditCard className="size-4 shrink-0" aria-hidden="true" />
+              ¿Lo pagaste con tarjeta de crédito? Puedes dividirlo en cuotas.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {tarjetas.map((t) => (
+                <Boton key={t.id} type="button" tamano="sm" variante="secundario" onClick={() => setCuentaId(t.id)}>
+                  Pagar con {t.nombre} en cuotas
+                </Boton>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="flex items-start gap-2 text-[12.5px] leading-relaxed text-tinta-3">
+            <CreditCard className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            ¿Pagas con tarjeta de crédito? Créala en Ajustes → Cuentas y podrás dividir la compra en cuotas.
+          </p>
+        )
+      ) : null}
+
       {conTarjeta && (
         <div className="flex flex-col gap-2">
           <Campo
@@ -432,6 +468,21 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
             ayuda={resumenCuotas}
             error={error && monto && monto < nCuotas ? error : undefined}
           />
+          <Segmentado<"este" | "siguiente">
+            etiqueta="Primera cuota"
+            columnas="grid-cols-2"
+            valor={primera}
+            onCambio={setPrimeraElegida}
+            opciones={[
+              { valor: "este", etiqueta: "Este mes" },
+              { valor: "siguiente", etiqueta: "El mes siguiente" },
+            ]}
+          />
+          {diaPago === null && nCuotas > 1 ? (
+            <p className="text-[12.5px] leading-relaxed text-tinta-3">
+              Pon el día en que pagas {cuentaElegida?.nombre} (Ajustes → Cuentas) para que cada cuota caiga ese día.
+            </p>
+          ) : null}
           <div className="flex flex-wrap gap-2" role="group" aria-label="Cuotas frecuentes">
             {[1, 3, 6, 12, 24, 36].map((n) => (
               <Boton
@@ -447,6 +498,22 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
           </div>
         </div>
       )}
+
+      {conTarjeta && fechasCuotas.length > 0 && montosCuota.length > 0 ? (
+        <details className="rounded-xl border border-borde-suave bg-fondo-alto p-3 text-[13px] text-tinta-2">
+          <summary className="cursor-pointer text-tinta">Ver cuándo paga cada cuota</summary>
+          <ol className="mt-2 flex flex-col gap-1">
+            {fechasCuotas.map((f, i) => (
+              <li key={f} className="flex justify-between gap-3 tabular">
+                <span>
+                  {i + 1}. {conAnio(f)}
+                </span>
+                <span>{pesos(montosCuota[i])}</span>
+              </li>
+            ))}
+          </ol>
+        </details>
+      ) : null}
 
       {editando && borrador.cuota && borrador.cuotas ? (
         <p className="flex items-start gap-2 rounded-xl border border-borde-suave bg-fondo-alto p-3 text-[13px] leading-relaxed text-tinta-2">

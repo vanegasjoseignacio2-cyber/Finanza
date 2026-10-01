@@ -16,6 +16,7 @@ import {
 import type {
   Ajustes,
   Alerta,
+  CuotaProxima,
   Cuenta,
   CuentaConSaldo,
   Meta,
@@ -425,6 +426,8 @@ export interface EntradaResumen {
   sumas: SumaAgrupada[];
   /** Todo el historial por mes (no solo los últimos): de él sale lo que sobró antes. */
   serie: FilaMensual[];
+  /** Cuotas de tarjeta de los meses que vienen. */
+  cuotasProximas?: CuotaProxima[];
   catalogo?: Catalogo;
 }
 
@@ -493,6 +496,8 @@ export function componerResumen(e: EntradaResumen): Resumen {
     sobranteAnterior: anterior.total,
     mesesAnteriores: anterior.meses,
     totalDisponible: libre + anterior.total,
+    cuotasDelMes: movs.filter((m) => m.tipo === "gasto" && m.cuota !== null).reduce((s, m) => s + m.monto, 0),
+    cuotasProximas: e.cuotasProximas ?? [],
     diasRestantes,
     cuotaMetasPendiente,
     categorias: agruparPorCategoria(movs),
@@ -615,4 +620,23 @@ export function repartirCuotas(total: number, cuotas: number): number[] {
   const base = Math.floor(total / cuotas);
   const resto = total - base * cuotas;
   return Array.from({ length: cuotas }, (_, i) => (i === 0 ? base + resto : base));
+}
+
+/**
+ * Fechas de cada cuota. Con día de pago de la tarjeta, cada cuota cae ese día
+ * (el último del mes si el mes no lo tiene); sin él, el mismo día de la compra.
+ * `mesesDespues` = 1 cuando la primera cuota se cobra el mes siguiente.
+ */
+export function calendarioCuotas(
+  fecha: string,
+  cuotas: number,
+  diaPago: number | null,
+  mesesDespues: 0 | 1 = 0,
+): string[] {
+  const base = sumarMeses(fecha.slice(0, 7), mesesDespues);
+  const dia = diaPago ?? Number(fecha.slice(8, 10));
+  return Array.from({ length: cuotas }, (_, i) => {
+    const mes = sumarMeses(base, i);
+    return `${mes}-${String(Math.min(dia, diasDelMes(mes))).padStart(2, "0")}`;
+  });
 }

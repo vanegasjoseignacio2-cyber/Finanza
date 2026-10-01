@@ -7,6 +7,7 @@ import {
   calcularRecordatorios,
   calcularSaldos,
   calcularSobranteAnterior,
+  calendarioCuotas,
   calcularTendencia,
   componerResumen,
   recordatoriosParaAvisar,
@@ -633,5 +634,38 @@ describe("sobrante de meses anteriores y total disponible", () => {
     assert.equal(r.sobranteAnterior, 500_000);
     assert.equal(r.mesesAnteriores, 1);
     assert.equal(r.totalDisponible, 1_860_000);
+  });
+});
+
+describe("calendario de las cuotas", () => {
+  it("sin día de pago, cada cuota cae el día de la compra", () => {
+    assert.deepEqual(calendarioCuotas("2026-10-08", 3, null), ["2026-10-08", "2026-11-08", "2026-12-08"]);
+  });
+
+  it("con día de pago, cada cuota cae ese día", () => {
+    assert.deepEqual(calendarioCuotas("2026-10-08", 3, 15), ["2026-10-15", "2026-11-15", "2026-12-15"]);
+  });
+
+  it("la primera cuota puede cobrarse el mes siguiente y cruza de año", () => {
+    assert.deepEqual(calendarioCuotas("2026-11-20", 3, 5, 1), ["2026-12-05", "2027-01-05", "2027-02-05"]);
+  });
+
+  it("un día 31 cae el último día de los meses cortos y vuelve al 31", () => {
+    assert.deepEqual(calendarioCuotas("2026-01-10", 3, 31), ["2026-01-31", "2026-02-28", "2026-03-31"]);
+  });
+
+  it("el resumen separa las cuotas del mes de lo demás gastado", () => {
+    const r = componerResumen(
+      entrada({
+        movimientosMes: [
+          movimiento({ monto: 100_000, cuota: 2, cuotas: 6, compraId: "c1" }),
+          movimiento({ monto: 40_000 }),
+        ],
+        cuotasProximas: [{ mes: "2026-10", total: 100_000, cantidad: 1 }],
+      }),
+    );
+    assert.equal(r.gastado, 140_000);
+    assert.equal(r.cuotasDelMes, 100_000);
+    assert.equal(r.cuotasProximas.length, 1);
   });
 });
