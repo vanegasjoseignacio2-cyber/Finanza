@@ -120,6 +120,33 @@ function Protagonista({ r }: { r: Resumen }) {
         </>
       )}
 
+      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="rounded-xl border border-borde-suave bg-superficie-alta px-4 py-3">
+          <p className="text-[12px] text-tinta-3">Sobrante de meses anteriores</p>
+          <p className={`mt-0.5 font-display text-[19px] font-semibold tabular ${r.sobranteAnterior < 0 ? "text-alerta" : "text-tinta"}`}>
+            {r.sobranteAnterior > 0 ? "+ " : r.sobranteAnterior < 0 ? "− " : ""}
+            {pesos(Math.abs(r.sobranteAnterior))}
+          </p>
+          <p className="mt-0.5 text-[11.5px] text-tinta-3">
+            {r.mesesAnteriores === 0
+              ? "Todavía no hay meses anteriores."
+              : `Suma de ${r.mesesAnteriores} ${r.mesesAnteriores === 1 ? "mes" : "meses"} anteriores.`}
+          </p>
+        </div>
+        <div className="rounded-xl border border-acento/40 bg-superficie-alta px-4 py-3">
+          <p className="text-[12px] text-tinta-3">Total disponible</p>
+          <p className={`mt-0.5 font-display text-[19px] font-semibold tabular ${r.totalDisponible < 0 ? "text-alerta" : "text-acento"}`}>
+            {r.totalDisponible < 0 ? "− " : ""}
+            {pesos(Math.abs(r.totalDisponible))}
+          </p>
+          <p className="mt-0.5 text-[11.5px] text-tinta-3">
+            {enRojo && r.totalDisponible >= 0
+              ? "Con lo que sobró antes, igual te alcanza."
+              : "Lo de este mes más lo que sobró antes."}
+          </p>
+        </div>
+      </div>
+
       <dl className="mt-6 border-t border-borde-suave pt-3 text-[14px]">
         {filas.map((f) => (
           <div key={f.etiqueta} className="flex items-center justify-between gap-3 py-1.5">
@@ -133,6 +160,17 @@ function Protagonista({ r }: { r: Resumen }) {
         <div className="mt-1.5 flex items-center justify-between gap-3 border-t border-borde-suave pt-2.5">
           <dt className="font-semibold text-tinta">Libre</dt>
           <dd className={`font-semibold tabular ${enRojo ? "text-alerta" : "text-acento"}`}>{pesos(r.libre)}</dd>
+        </div>
+        <div className="flex items-center justify-between gap-3 py-1.5">
+          <dt className="text-tinta-3">Sobrante de meses anteriores</dt>
+          <dd className="tabular text-tinta-2">
+            {r.sobranteAnterior < 0 ? "− " : "+ "}
+            {pesos(Math.abs(r.sobranteAnterior))}
+          </dd>
+        </div>
+        <div className="flex items-center justify-between gap-3 border-t border-borde-suave pt-2.5">
+          <dt className="font-semibold text-tinta">Total disponible</dt>
+          <dd className={`font-semibold tabular ${r.totalDisponible < 0 ? "text-alerta" : "text-acento"}`}>{pesos(r.totalDisponible)}</dd>
         </div>
       </dl>
 

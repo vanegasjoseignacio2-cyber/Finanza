@@ -13,7 +13,7 @@ import {
   type PortadaDoc,
   type RecordatorioDoc,
 } from "./db";
-import { diasDelMes, hoyISO, mesActual, sumarMeses, sumarMesesAFecha } from "./fechas";
+import { diasDelMes, hoyISO, mesActual, sumarMesesAFecha } from "./fechas";
 import {
   componerResumen,
   cuentaPrincipal,
@@ -810,7 +810,7 @@ export async function calcularResumen(mes = mesActual()): Promise<Resumen> {
       listarCuentas(),
       listarPresupuestos(),
       sumasHistoricas(),
-      serieMensual(sumarMeses(mes, -5), mes),
+      serieMensual("2000-01", mes),
       obtenerCatalogo(),
     ]);
 

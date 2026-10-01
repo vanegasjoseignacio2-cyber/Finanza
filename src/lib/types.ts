@@ -213,6 +213,12 @@ export interface Resumen {
 
   /** Lo que de verdad queda para gastar: ingreso − gastado − ahorro − fijos pendientes. */
   libre: number;
+  /** Lo que sobró (o faltó) sumando los meses anteriores a este. */
+  sobranteAnterior: number;
+  /** Cuántos meses anteriores entran en `sobranteAnterior` (0 en el primer mes de uso). */
+  mesesAnteriores: number;
+  /** Libre de este mes más lo que sobró antes. */
+  totalDisponible: number;
   diasRestantes: number | null;
   /** Cuota de metas con fecha límite que falta apartar este mes. */
   cuotaMetasPendiente: number;

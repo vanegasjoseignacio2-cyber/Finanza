@@ -358,6 +358,19 @@ export interface FilaMensual {
   total: number;
 }
 
+/** Lo que entró, salió y se apartó en un mes, con el sueldo esperado si aún no se registró. */
+function resultadoDelMes(filas: FilaMensual[], mes: string, sueldos: TramoSueldo[]) {
+  const delMes = filas.filter((f) => f.mes === mes);
+  const suma = (tipo: TipoMovimiento) =>
+    delMes.filter((f) => f.tipo === tipo).reduce((s, f) => s + f.total, 0);
+  const conSueldo = delMes.some((f) => f.tipo === "ingreso" && f.categoria === "sueldo");
+  return {
+    ingreso: suma("ingreso") + (conSueldo ? 0 : sueldoPara(sueldos, mes)),
+    gastado: suma("gasto"),
+    ahorrado: suma("ahorro") - suma("retiro"),
+  };
+}
+
 export function calcularTendencia(
   filas: FilaMensual[],
   hasta: string,
@@ -367,19 +380,32 @@ export function calcularTendencia(
   const puntos: PuntoTendencia[] = [];
   for (let i = meses - 1; i >= 0; i--) {
     const mes = sumarMeses(hasta, -i);
-    const delMes = filas.filter((f) => f.mes === mes);
-    const suma = (tipo: TipoMovimiento) =>
-      delMes.filter((f) => f.tipo === tipo).reduce((s, f) => s + f.total, 0);
-    const conSueldo = delMes.some((f) => f.tipo === "ingreso" && f.categoria === "sueldo");
-    puntos.push({
-      mes,
-      etiqueta: mesCorto(mes),
-      ingreso: suma("ingreso") + (conSueldo ? 0 : sueldoPara(sueldos, mes)),
-      gastado: suma("gasto"),
-      ahorrado: suma("ahorro") - suma("retiro"),
-    });
+    puntos.push({ mes, etiqueta: mesCorto(mes), ...resultadoDelMes(filas, mes, sueldos) });
   }
   return puntos;
+}
+
+/**
+ * Lo que sobró (o faltó) en los meses anteriores a `mes`, desde el primer mes
+ * con movimientos: por cada mes, ingreso − gastado − lo apartado en metas. Un mes
+ * en que se gastó de más resta. Los pagos fijos sin registrar de meses pasados
+ * no cuentan: no son un gasto hecho. `filas` debe traer todo el historial.
+ */
+export function calcularSobranteAnterior(
+  filas: FilaMensual[],
+  mes: string,
+  sueldos: TramoSueldo[],
+): { total: number; meses: number } {
+  if (filas.length === 0) return { total: 0, meses: 0 };
+  const primero = filas.reduce((min, f) => (f.mes < min ? f.mes : min), filas[0].mes);
+  let total = 0;
+  let meses = 0;
+  for (let m = primero; m < mes && meses < 600; m = sumarMeses(m, 1)) {
+    const r = resultadoDelMes(filas, m, sueldos);
+    total += r.ingreso - r.gastado - r.ahorrado;
+    meses++;
+  }
+  return { total, meses };
 }
 
 /* ─── Resumen ────────────────────────────────────────────────────────────── */
@@ -397,6 +423,7 @@ export interface EntradaResumen {
   cuentas: Cuenta[];
   presupuestos: Presupuesto[];
   sumas: SumaAgrupada[];
+  /** Todo el historial por mes (no solo los últimos): de él sale lo que sobró antes. */
   serie: FilaMensual[];
   catalogo?: Catalogo;
 }
@@ -447,6 +474,7 @@ export function componerResumen(e: EntradaResumen): Resumen {
   const cuotaMetasPendiente = momento === "actual" ? cuotaPendienteDelMes(metas) : 0;
 
   const presupuestos = calcularPresupuestos(e.presupuestos, movs);
+  const anterior = calcularSobranteAnterior(e.serie, e.mes, e.ajustes.sueldos);
 
   const resumen: Resumen = {
     mes: e.mes,
@@ -462,6 +490,9 @@ export function componerResumen(e: EntradaResumen): Resumen {
     fijosPendientesLista,
     fijosSinMonto,
     libre,
+    sobranteAnterior: anterior.total,
+    mesesAnteriores: anterior.meses,
+    totalDisponible: libre + anterior.total,
     diasRestantes,
     cuotaMetasPendiente,
     categorias: agruparPorCategoria(movs),

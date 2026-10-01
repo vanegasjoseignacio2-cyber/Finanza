@@ -308,6 +308,19 @@ describe("capa de datos contra MongoDB", { skip: omitir }, () => {
     });
   });
 
+  it("el resumen suma el sobrante de todos los meses anteriores, no solo de los últimos seis", async () => {
+    await datos.crearMovimiento({ tipo: "ingreso", categoria: "ingreso-extra", monto: 1_000_000, fecha: "2026-01-10", nota: "" });
+    await datos.crearMovimiento({ tipo: "gasto", categoria: "mercado", monto: 400_000, fecha: "2026-01-12", nota: "" });
+    await datos.crearMovimiento({ tipo: "ingreso", categoria: "ingreso-extra", monto: 500_000, fecha: "2026-08-03", nota: "" });
+    await datos.crearMovimiento({ tipo: "ingreso", categoria: "ingreso-extra", monto: 200_000, fecha: "2026-10-02", nota: "" });
+    const r = await datos.calcularResumen("2026-10");
+    // enero 600.000 + agosto 500.000; los meses vacíos del medio no suman nada
+    assert.equal(r.sobranteAnterior, 1_100_000);
+    assert.equal(r.mesesAnteriores, 9);
+    assert.equal(r.libre, 200_000);
+    assert.equal(r.totalDisponible, 1_300_000);
+  });
+
   describe("tarjeta de crédito y cuotas", () => {
     async function conTarjeta() {
       const tarjeta = await datos.crearCuenta({ nombre: "Visa", tipo: "tarjeta", saldoInicial: 0, cupo: 5_000_000 });

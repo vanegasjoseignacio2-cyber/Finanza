@@ -6,6 +6,7 @@ import {
   calcularPresupuestos,
   calcularRecordatorios,
   calcularSaldos,
+  calcularSobranteAnterior,
   calcularTendencia,
   componerResumen,
   recordatoriosParaAvisar,
@@ -558,5 +559,79 @@ describe("compras en cuotas", () => {
     const resumen = componerResumen(entrada({ mes: "2026-10", hoy: "2026-10-05", movimientosMes: [octubre] }));
     assert.equal(resumen.gastado, 100_000);
     assert.ok(septiembre.mes !== octubre.mes);
+  });
+});
+
+describe("sobrante de meses anteriores y total disponible", () => {
+  const fila = (mes: string, tipo: "ingreso" | "gasto" | "ahorro" | "retiro", total: number, categoria = tipo === "ingreso" ? "sueldo" : "mercado") => ({
+    mes,
+    tipo,
+    categoria,
+    total,
+  });
+
+  it("sin historial no hay sobrante", () => {
+    assert.deepEqual(calcularSobranteAnterior([], "2026-10", []), { total: 0, meses: 0 });
+  });
+
+  it("en el primer mes de uso no hay meses anteriores", () => {
+    const filas = [fila("2026-10", "ingreso", 1_860_000)];
+    assert.deepEqual(calcularSobranteAnterior(filas, "2026-10", []), { total: 0, meses: 0 });
+  });
+
+  it("suma lo que sobró en cada mes anterior: ingreso menos gastado y apartado", () => {
+    const filas = [
+      fila("2026-08", "ingreso", 2_000_000),
+      fila("2026-08", "gasto", 1_500_000),
+      fila("2026-09", "ingreso", 2_000_000),
+      fila("2026-09", "gasto", 1_200_000),
+      fila("2026-09", "ahorro", 300_000),
+    ];
+    // agosto 500.000 + septiembre 500.000
+    assert.deepEqual(calcularSobranteAnterior(filas, "2026-10", []), { total: 1_000_000, meses: 2 });
+  });
+
+  it("un mes que se gastó de más resta, y un retiro de meta suma", () => {
+    const filas = [
+      fila("2026-08", "ingreso", 1_000_000),
+      fila("2026-08", "gasto", 1_400_000),
+      fila("2026-09", "ingreso", 1_000_000),
+      fila("2026-09", "retiro", 200_000),
+    ];
+    // agosto −400.000 + septiembre (1.000.000 + 200.000 devueltos de una meta)
+    assert.equal(calcularSobranteAnterior(filas, "2026-10", []).total, 800_000);
+  });
+
+  it("usa el sueldo esperado de un mes en que no se registró, y solo desde el primer mes con datos", () => {
+    const sueldos = [{ desde: "2000-01", monto: 1_000_000 }];
+    const filas = [fila("2026-08", "gasto", 300_000), fila("2026-09", "gasto", 400_000)];
+    // no cuenta enero..julio (sin datos): agosto 700.000 + septiembre 600.000
+    assert.deepEqual(calcularSobranteAnterior(filas, "2026-10", sueldos), { total: 1_300_000, meses: 2 });
+  });
+
+  it("no cuenta el mes que se está viendo ni los posteriores", () => {
+    const filas = [fila("2026-09", "ingreso", 500_000), fila("2026-10", "ingreso", 9_000_000), fila("2026-11", "ingreso", 9_000_000)];
+    assert.equal(calcularSobranteAnterior(filas, "2026-10", []).total, 500_000);
+  });
+
+  it("el resumen suma lo libre de este mes con el sobrante anterior", () => {
+    const serie = [
+      fila("2026-09", "ingreso", 2_000_000),
+      fila("2026-09", "gasto", 1_500_000),
+      fila("2026-10", "ingreso", 1_860_000),
+    ];
+    const r = componerResumen(
+      entrada({
+        mes: "2026-10",
+        hoy: "2026-10-05",
+        movimientosMes: [movimiento({ tipo: "ingreso", categoria: "sueldo", monto: 1_860_000, fecha: "2026-10-01" })],
+        serie,
+        recordatorios: [recordatorio({ dia: 7, montoEstimado: 500_000 })],
+      }),
+    );
+    assert.equal(r.libre, 1_360_000);
+    assert.equal(r.sobranteAnterior, 500_000);
+    assert.equal(r.mesesAnteriores, 1);
+    assert.equal(r.totalDisponible, 1_860_000);
   });
 });

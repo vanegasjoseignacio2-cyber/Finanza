@@ -47,6 +47,11 @@ del celular vence el 28 y hoy es 23, lo libre ya no lo cuenta como tuyo.
 - **Los saldos de las cuentas** son el saldo inicial más todo lo registrado en
   esa cuenta, **de todos los meses**: no es lo mismo que lo del mes que estás
   viendo. Si no registras algo, el saldo no lo sabe.
+- **Lo de este mes y el total.** En **Hoy**, "Libre este mes" es solo lo de este
+  mes. Al lado aparece lo que **sobró de los meses anteriores** (por cada mes:
+  ingreso − gastado − lo apartado en metas, desde el primer mes con movimientos)
+  y el **Total disponible**, que es la suma de ambos. Un mes en que se gastó de
+  más resta del sobrante. En el primer mes de uso no hay meses anteriores.
 - **Tarjeta de crédito y cuotas.** Una cuenta de tipo *Tarjeta de crédito* (con
   cupo opcional) muestra lo que debes y lo que te queda disponible. Al registrar
   un gasto con ella eliges en cuántas cuotas (1 a 60 meses): se guarda **una
