@@ -1,9 +1,8 @@
-import { cookies } from "next/headers";
-import { COOKIE_SESION } from "@/lib/auth";
+import { borrarCookieSesion } from "@/lib/seguridad";
 
 export const dynamic = "force-dynamic";
 
 export async function POST() {
-  (await cookies()).delete(COOKIE_SESION);
+  await borrarCookieSesion();
   return Response.json({ ok: true });
 }

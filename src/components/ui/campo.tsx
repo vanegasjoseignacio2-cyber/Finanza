@@ -133,7 +133,10 @@ function MenuSelect({
       open={abierto}
       onOpenChange={setAbierto}
       disabled={disabled}
-      required={required}
+      // El menú solo existe abierto, así que el <select> nativo de Radix no
+      // tiene opciones y, con `required`, siempre quedaría inválido al guardar.
+      // Solo se exige cuando de verdad no hay nada elegido.
+      required={required && value === ""}
     >
       <SelectPrimitivo.Trigger
         id={id}

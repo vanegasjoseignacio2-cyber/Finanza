@@ -1,7 +1,7 @@
 import { createHash, randomBytes, scrypt as scryptCb, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { cookies } from "next/headers";
-import { COOKIE_SESION, leerSesion } from "./auth";
+import { COOKIE_SESION, leerSesion, opcionesCookie } from "./auth";
 import { buscarUsuario, consumirLimite, type Usuario } from "./datos";
 import { respuestaError } from "./validacion";
 
@@ -49,6 +49,15 @@ export async function claveActualCorrecta(correo: string, clave: string): Promis
 }
 
 /* ─── Sesión ─────────────────────────────────────────────────────────────── */
+
+/**
+ * Borra la cookie de sesión. Con el prefijo __Host- el navegador ignora un
+ * borrado que no repita Secure y Path=/, así que se reenvía con los mismos
+ * atributos con que se creó y caducidad inmediata.
+ */
+export async function borrarCookieSesion(): Promise<void> {
+  (await cookies()).set(COOKIE_SESION, "", { ...opcionesCookie, maxAge: 0 });
+}
 
 // La versión vigente se cachea unos segundos para no consultar la base en cada
 // petición. Cerrar todas las sesiones tarda como mucho eso en surtir efecto.
