@@ -152,7 +152,7 @@ const globalMongo = globalThis as unknown as {
   _finanzaUsuarioPruebas?: string;
 };
 
-function crearCliente(): Promise<MongoClient> {
+async function crearCliente(): Promise<MongoClient> {
   const uri = process.env.MONGODB_URI;
   if (!uri) {
     // La comprobación es perezosa a propósito: así `next build` no falla por
@@ -163,8 +163,22 @@ function crearCliente(): Promise<MongoClient> {
   }
   return new MongoClient(uri, {
     maxPoolSize: 10,
-    serverSelectionTimeoutMS: 10_000,
+    serverSelectionTimeoutMS: Number(process.env.MONGODB_TIMEOUT_MS) || 10_000,
   }).connect();
+}
+
+/**
+ * El cliente compartido. Si el primer intento de conexión falla (un corte de red
+ * pasajero), el error NO se queda guardado: la siguiente petición vuelve a
+ * intentarlo. Antes quedaba la promesa rechazada en caché y todas las peticiones
+ * fallaban hasta reiniciar el servidor.
+ */
+function clienteCompartido(): Promise<MongoClient> {
+  const intento = (globalMongo._finanzaMongo ??= crearCliente());
+  intento.catch(() => {
+    if (globalMongo._finanzaMongo === intento) globalMongo._finanzaMongo = undefined;
+  });
+  return intento;
 }
 
 /** Índices de los datos de cada persona. */
@@ -193,8 +207,7 @@ async function indicesGlobales(db: Db): Promise<void> {
 }
 
 async function conIndices(nombre: string, crear: (db: Db) => Promise<void>): Promise<Db> {
-  globalMongo._finanzaMongo ??= crearCliente();
-  const client = await globalMongo._finanzaMongo;
+  const client = await clienteCompartido();
   const db = client.db(nombre);
   const hechos = (globalMongo._finanzaIndices ??= new Map());
   if (!hechos.has(nombre)) {
@@ -204,6 +217,7 @@ async function conIndices(nombre: string, crear: (db: Db) => Promise<void>): Pro
         // Los índices son una optimización: si el usuario de Atlas no puede
         // crearlos, la app sigue funcionando.
         console.error("No se pudieron crear los índices de MongoDB:", error);
+        hechos.delete(nombre); // se reintentan en la próxima petición
       }),
     );
   }

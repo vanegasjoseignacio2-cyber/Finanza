@@ -261,6 +261,19 @@ describe("capa de datos contra MongoDB", { skip: omitir }, () => {
     assert.equal(unico.desde, null);
   });
 
+  it("tras un fallo de conexión pasajero, la siguiente petición reintenta y funciona", async () => {
+    await db.cerrarConexion();
+    process.env.MONGODB_URI = "mongodb://127.0.0.1:1"; // nadie escucha ahí
+    process.env.MONGODB_TIMEOUT_MS = "400";
+    try {
+      await assert.rejects(datos.listarCuentas());
+    } finally {
+      process.env.MONGODB_URI = URI as string;
+      delete process.env.MONGODB_TIMEOUT_MS;
+    }
+    assert.ok((await datos.listarCuentas()).length >= 1, "debió reconectar y responder");
+  });
+
   describe("perfiles: cada usuario tiene sus propios datos", () => {
     const A = "a@ejemplo.com";
     const B2 = "b@ejemplo.com";
