@@ -1,4 +1,6 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { MongoClient, type Binary, type Collection, type Db, type ObjectId } from "mongodb";
+import { COOKIE_SESION, leerSesion } from "./auth";
 import type {
   Ajustes,
   CategoriaPersonal,
@@ -89,6 +91,12 @@ export interface UsuarioDoc {
   _id: string; // correo en minúsculas
   claveHash: string;
   sesionVersion: number;
+  /**
+   * Nombre de la base donde viven los datos de esta persona. Cada usuario tiene la
+   * suya, así que sus datos no se pueden mezclar. Sin este campo (el primer
+   * usuario, anterior a los perfiles) se usa la base principal, MONGODB_DB.
+   */
+  base?: string;
   creadoEn: string;
   actualizadoEn?: string;
 }
@@ -133,10 +141,15 @@ export interface LimiteDoc {
 /* ─── Conexión ───────────────────────────────────────────────────────────── */
 
 // En desarrollo el hot reload recrea los módulos: se cachea el cliente en
-// global para no abrir una conexión nueva en cada recarga.
+// global para no abrir una conexión nueva en cada recarga. Next también
+// empaqueta la API y las páginas por separado, así que todo lo compartido va en
+// globalThis para que exista una sola copia.
 const globalMongo = globalThis as unknown as {
   _finanzaMongo?: Promise<MongoClient>;
-  _finanzaIndices?: Promise<void>;
+  _finanzaIndices?: Map<string, Promise<void>>;
+  _finanzaContexto?: AsyncLocalStorage<string>;
+  _finanzaBases?: Map<string, string>;
+  _finanzaUsuarioPruebas?: string;
 };
 
 function crearCliente(): Promise<MongoClient> {
@@ -154,13 +167,13 @@ function crearCliente(): Promise<MongoClient> {
   }).connect();
 }
 
-async function asegurarIndices(db: Db): Promise<void> {
+/** Índices de los datos de cada persona. */
+async function indicesDeUsuario(db: Db): Promise<void> {
   await Promise.all([
     db.collection("movimientos").createIndex({ mes: -1, fecha: -1 }),
     db.collection("movimientos").createIndex({ tipo: 1, mes: 1 }),
     db.collection("movimientos").createIndex({ recurrenteId: 1, mes: 1 }, { sparse: true }),
     db.collection("recordatorios").createIndex({ dia: 1 }),
-    db.collection("limites").createIndex({ expiraEn: 1 }, { expireAfterSeconds: 0 }),
     // Únicos parciales: si dos peticiones crean a la vez la cuenta principal o
     // migran la meta antigua, el servidor reintenta el upsert en vez de duplicar.
     db.collection("cuentas").createIndex(
@@ -174,18 +187,107 @@ async function asegurarIndices(db: Db): Promise<void> {
   ]);
 }
 
-export async function getDb(): Promise<Db> {
+/** Índices de lo que es de todos: los contadores de límites caducan solos. */
+async function indicesGlobales(db: Db): Promise<void> {
+  await db.collection("limites").createIndex({ expiraEn: 1 }, { expireAfterSeconds: 0 });
+}
+
+async function conIndices(nombre: string, crear: (db: Db) => Promise<void>): Promise<Db> {
   globalMongo._finanzaMongo ??= crearCliente();
   const client = await globalMongo._finanzaMongo;
-  // El nombre se lee en cada llamada: las pruebas de integración usan otra base.
-  const db = client.db(process.env.MONGODB_DB || "finanza");
-  globalMongo._finanzaIndices ??= asegurarIndices(db).catch((error) => {
-    // Los índices son una optimización: si el usuario de Atlas no puede
-    // crearlos, la app sigue funcionando.
-    console.error("No se pudieron crear los índices de MongoDB:", error);
-  });
-  await globalMongo._finanzaIndices;
+  const db = client.db(nombre);
+  const hechos = (globalMongo._finanzaIndices ??= new Map());
+  if (!hechos.has(nombre)) {
+    hechos.set(
+      nombre,
+      crear(db).catch((error) => {
+        // Los índices son una optimización: si el usuario de Atlas no puede
+        // crearlos, la app sigue funcionando.
+        console.error("No se pudieron crear los índices de MongoDB:", error);
+      }),
+    );
+  }
+  await hechos.get(nombre);
   return db;
+}
+
+function nombreBasePrincipal(): string {
+  // Se lee en cada llamada: las pruebas de integración usan otra base.
+  return process.env.MONGODB_DB || "finanza";
+}
+
+/**
+ * Base principal: guarda lo compartido (usuarios, intentos de acceso y límites).
+ * Ahí viven también los datos del primer usuario, anterior a los perfiles.
+ */
+export async function getDb(): Promise<Db> {
+  return conIndices(nombreBasePrincipal(), async (db) => {
+    await Promise.all([indicesGlobales(db), indicesDeUsuario(db)]);
+  });
+}
+
+/* ─── Quién es el usuario de esta petición ───────────────────────────────── */
+
+function contexto(): AsyncLocalStorage<string> {
+  return (globalMongo._finanzaContexto ??= new AsyncLocalStorage<string>());
+}
+
+/**
+ * Ejecuta `fn` como ese usuario: lo que pida a los datos sale de su base. Lo usa
+ * el cron, que recorre a todos los usuarios sin una sesión de navegador.
+ */
+export function conUsuario<T>(correo: string, fn: () => Promise<T>): Promise<T> {
+  return contexto().run(correo.trim().toLowerCase(), fn);
+}
+
+/** Solo para las pruebas: fija el usuario cuando FINANZA_PRUEBAS=1. */
+export function fijarUsuarioDePruebas(correo: string | undefined): void {
+  globalMongo._finanzaUsuarioPruebas = correo;
+}
+
+const pruebasActivas = () => process.env.FINANZA_PRUEBAS === "1" && Boolean(globalMongo._finanzaUsuarioPruebas);
+
+/**
+ * El usuario dueño de los datos que se piden: el del contexto explícito (cron) o,
+ * si no, el de la sesión de esta petición (la cookie firmada). Sin ninguno, error:
+ * jamás se devuelve la base de otra persona por defecto.
+ */
+async function correoDeLaPeticion(): Promise<string> {
+  const explicito = contexto().getStore();
+  if (explicito) return explicito;
+  if (pruebasActivas()) return globalMongo._finanzaUsuarioPruebas as string;
+  let token: string | undefined;
+  try {
+    // La configuración de TypeScript de las pruebas no resuelve los tipos de Next.
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
+    const { cookies } = await import("next/headers");
+    token = (await cookies()).get(COOKIE_SESION)?.value;
+  } catch {
+    token = undefined; // fuera de una petición no hay cookies
+  }
+  const sesion = await leerSesion(token);
+  if (!sesion) throw new Error("No hay un usuario con sesión para acceder a los datos.");
+  return sesion.correo;
+}
+
+async function nombreBaseDe(correo: string): Promise<string> {
+  if (pruebasActivas() && !contexto().getStore()) return nombreBasePrincipal();
+  const bases = (globalMongo._finanzaBases ??= new Map());
+  const guardada = bases.get(correo);
+  if (guardada) return guardada;
+  const doc = await (await getDb()).collection<UsuarioDoc>("usuarios").findOne({ _id: correo }, { projection: { base: 1 } });
+  if (!doc) throw new Error("El usuario no existe.");
+  const base = doc.base || nombreBasePrincipal();
+  bases.set(correo, base);
+  return base;
+}
+
+/** Base del usuario de esta petición, con sus índices. */
+export async function getDbUsuario(): Promise<Db> {
+  const nombre = await nombreBaseDe(await correoDeLaPeticion());
+  if (nombre === nombreBasePrincipal()) return getDb();
+  return conIndices(nombre, indicesDeUsuario);
 }
 
 /** Cierra la conexión compartida (lo usan las pruebas al terminar). */
@@ -193,24 +295,31 @@ export async function cerrarConexion(): Promise<void> {
   const pendiente = globalMongo._finanzaMongo;
   globalMongo._finanzaMongo = undefined;
   globalMongo._finanzaIndices = undefined;
+  globalMongo._finanzaBases = undefined;
   if (pendiente) await (await pendiente).close();
 }
 
-async function col<T extends object>(nombre: string): Promise<Collection<T>> {
+async function colGlobal<T extends object>(nombre: string): Promise<Collection<T>> {
   return (await getDb()).collection<T>(nombre);
 }
 
+async function colUsuario<T extends object>(nombre: string): Promise<Collection<T>> {
+  return (await getDbUsuario()).collection<T>(nombre);
+}
+
 export const colecciones = {
-  movimientos: () => col<MovimientoDoc>("movimientos"),
-  recordatorios: () => col<RecordatorioDoc>("recordatorios"),
-  cuentas: () => col<CuentaDoc>("cuentas"),
-  metas: () => col<MetaDoc>("metas"),
-  presupuestos: () => col<PresupuestoDoc>("presupuestos"),
-  categorias: () => col<CategoriaDoc>("categorias"),
-  ajustes: () => col<AjustesDoc>("ajustes"),
-  usuarios: () => col<UsuarioDoc>("usuarios"),
-  envios: () => col<EnvioDoc>("envios"),
-  intentos: () => col<IntentoDoc>("intentos"),
-  limites: () => col<LimiteDoc>("limites"),
-  portadas: () => col<PortadaDoc>("portadas"),
+  // De cada persona: viven en su propia base.
+  movimientos: () => colUsuario<MovimientoDoc>("movimientos"),
+  recordatorios: () => colUsuario<RecordatorioDoc>("recordatorios"),
+  cuentas: () => colUsuario<CuentaDoc>("cuentas"),
+  metas: () => colUsuario<MetaDoc>("metas"),
+  presupuestos: () => colUsuario<PresupuestoDoc>("presupuestos"),
+  categorias: () => colUsuario<CategoriaDoc>("categorias"),
+  ajustes: () => colUsuario<AjustesDoc>("ajustes"),
+  envios: () => colUsuario<EnvioDoc>("envios"),
+  portadas: () => colUsuario<PortadaDoc>("portadas"),
+  // De todos: en la base principal.
+  usuarios: () => colGlobal<UsuarioDoc>("usuarios"),
+  intentos: () => colGlobal<IntentoDoc>("intentos"),
+  limites: () => colGlobal<LimiteDoc>("limites"),
 };

@@ -27,6 +27,8 @@ interface Opciones {
   forzar?: boolean;
   /** Dirección alternativa (correo de prueba). */
   destino?: string;
+  /** Correo con que entra el usuario: es el destino si no eligió otro en Ajustes. */
+  usuario?: string;
   urlApp?: string;
   /** Sustituto del envío real, para las pruebas. */
   enviar?: typeof enviarCorreo;
@@ -49,7 +51,7 @@ export async function ejecutarRecordatorioDiario(opciones: Opciones = {}): Promi
     return { enviado: false, motivo: "El aviso por correo está apagado en Ajustes." };
   }
 
-  const destinatario = opciones.destino || ajustes.email || process.env.REMINDER_EMAIL || "";
+  const destinatario = opciones.destino || ajustes.email || opciones.usuario || "";
   if (!destinatario) {
     return { enviado: false, motivo: "No hay un correo de destino configurado." };
   }

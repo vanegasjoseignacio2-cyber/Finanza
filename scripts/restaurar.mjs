@@ -5,6 +5,7 @@
  *
  *   npm run restaurar -- finanza-respaldo-2026-09-21.json
  *   npm run restaurar -- finanza-respaldo-2026-09-21.json --reemplazar
+ *   npm run restaurar -- respaldo.json --usuario correo@ejemplo.com
  *
  * Sin --reemplazar solo restaura sobre una base vacía. Con --reemplazar borra
  * lo que haya en cada colección antes de cargar el respaldo. El usuario y su
@@ -15,6 +16,8 @@ import { BSON, MongoClient } from "mongodb";
 
 const [archivo, ...banderas] = process.argv.slice(2);
 const reemplazar = banderas.includes("--reemplazar");
+const iUsuario = banderas.indexOf("--usuario");
+const usuario = iUsuario >= 0 ? (banderas[iUsuario + 1] ?? "").trim().toLowerCase() : "";
 
 function salir(mensaje) {
   console.error(`\n${mensaje}\n`);
@@ -37,7 +40,16 @@ if (respaldo?.formato !== "finanza-respaldo" || typeof respaldo.colecciones !== 
 
 const cliente = await new MongoClient(uri).connect();
 try {
-  const db = cliente.db(process.env.MONGODB_DB || "finanza");
+  // Cada persona tiene su propia base: sin --usuario se restaura en la principal
+  // (la del primer usuario); con él, en la base de ese usuario.
+  const principal = process.env.MONGODB_DB || "finanza";
+  let nombreBase = principal;
+  if (usuario) {
+    const doc = await cliente.db(principal).collection("usuarios").findOne({ _id: usuario });
+    if (!doc) salir(`No existe el usuario ${usuario}.`);
+    nombreBase = doc.base || principal;
+  }
+  const db = cliente.db(nombreBase);
   const nombres = Object.keys(respaldo.colecciones);
 
   if (!reemplazar) {

@@ -28,6 +28,9 @@ describe("capa de datos contra MongoDB", { skip: omitir }, () => {
     // La conexión lee estas variables en la primera consulta, no al importar.
     process.env.MONGODB_URI = URI;
     process.env.MONGODB_DB = BASE;
+    // Los datos son de cada usuario: las pruebas fijan uno (solo con esta variable).
+    process.env.FINANZA_PRUEBAS = "1";
+    db.fijarUsuarioDePruebas("pruebas@ejemplo.com");
     conectado = true;
   });
 
@@ -41,6 +44,12 @@ describe("capa de datos contra MongoDB", { skip: omitir }, () => {
   after(async () => {
     if (!conectado) return;
     await (await db.getDb()).dropDatabase();
+    const otra = new MongoClient(URI as string);
+    await otra.connect();
+    await otra.db(`${BASE}_b`).dropDatabase();
+    await otra.close();
+    db.fijarUsuarioDePruebas(undefined);
+    delete process.env.FINANZA_PRUEBAS;
     await db.cerrarConexion();
   });
 
@@ -250,6 +259,99 @@ describe("capa de datos contra MongoDB", { skip: omitir }, () => {
     assert.equal((await datos.actualizarRecordatorio(mensual.id, { desde: null })).desde, null);
     const unico = await datos.crearRecordatorio({ titulo: "SOAT", dia: 20, categoria: "", montoEstimado: 0, fecha: "2026-11-20", desde: "2026-10" });
     assert.equal(unico.desde, null);
+  });
+
+  describe("perfiles: cada usuario tiene sus propios datos", () => {
+    const A = "a@ejemplo.com";
+    const B2 = "b@ejemplo.com";
+    const nuevoGasto = (monto: number) =>
+      datos.crearMovimiento({ tipo: "gasto", categoria: "mercado", monto, fecha: "2026-10-01", nota: `gasto ${monto}` });
+
+    async function dosUsuarios() {
+      const principal = await db.getDb();
+      await principal.client.db(`${BASE}_b`).dropDatabase(); // la base del segundo usuario no se limpia sola
+      await principal.collection("usuarios").insertMany([
+        { _id: A as never, claveHash: "x", sesionVersion: 0, creadoEn: "2026-10-01" },
+        { _id: B2 as never, claveHash: "x", sesionVersion: 0, base: `${BASE}_b`, creadoEn: "2026-10-01" },
+      ]);
+    }
+
+    it("lo que registra uno no lo ve el otro, ni en movimientos, ni en cuentas, ni en ajustes", async () => {
+      await dosUsuarios();
+      await db.conUsuario(A, async () => {
+        await nuevoGasto(100);
+        await datos.crearCuenta({ nombre: "Cuenta de A", tipo: "corriente", saldoInicial: 5 });
+        await datos.guardarAjustes({ email: "a-destino@ejemplo.com", diaSueldo: 5 });
+        await datos.fijarSueldo("2020-01", 1_000_000);
+      });
+      await db.conUsuario(B2, async () => {
+        assert.equal((await datos.listarMovimientos({})).length, 0);
+        assert.ok(!(await datos.listarCuentas()).some((c) => c.nombre === "Cuenta de A"));
+        const ajustes = await datos.obtenerAjustes();
+        assert.equal(ajustes.email, "");
+        assert.equal(ajustes.diaSueldo, null);
+        assert.deepEqual(ajustes.sueldos, []);
+        await nuevoGasto(7);
+        assert.equal((await datos.listarMovimientos({})).length, 1);
+      });
+      await db.conUsuario(A, async () => {
+        const movs = await datos.listarMovimientos({});
+        assert.equal(movs.length, 1);
+        assert.equal(movs[0].monto, 100);
+      });
+    });
+
+    it("los datos de cada uno están en una base distinta", async () => {
+      await dosUsuarios();
+      await db.conUsuario(A, () => nuevoGasto(100));
+      await db.conUsuario(B2, () => nuevoGasto(7));
+      const cliente = new MongoClient(URI as string);
+      await cliente.connect();
+      try {
+        const deA = await cliente.db(BASE).collection("movimientos").find({}).toArray();
+        const deB = await cliente.db(`${BASE}_b`).collection("movimientos").find({}).toArray();
+        assert.deepEqual(deA.map((m) => m.monto), [100]);
+        assert.deepEqual(deB.map((m) => m.monto), [7]);
+      } finally {
+        await cliente.close();
+      }
+    });
+
+    it("el sueldo automático, el resumen y los pagos fijos tampoco se cruzan", async () => {
+      await dosUsuarios();
+      await db.conUsuario(A, async () => {
+        await datos.fijarSueldo("2020-01", 2_000_000);
+        await datos.guardarAjustes({ diaSueldo: 1 });
+        assert.equal((await datos.acreditarSueldoSiToca("2026-10-05")).acreditado, true);
+        await datos.crearRecordatorio({ titulo: "Arriendo de A", dia: 7, categoria: "", montoEstimado: 500_000 });
+      });
+      await db.conUsuario(B2, async () => {
+        assert.equal((await datos.acreditarSueldoSiToca("2026-10-05")).acreditado, false);
+        const r = await datos.calcularResumen("2026-10");
+        assert.equal(r.ingresosRegistrados, 0);
+        assert.equal(r.recordatorios.length, 0);
+      });
+    });
+
+    it("sin usuario con sesión no se entrega ninguna base", async () => {
+      db.fijarUsuarioDePruebas(undefined);
+      try {
+        await assert.rejects(datos.listarMovimientos({}), /sesión/);
+      } finally {
+        db.fijarUsuarioDePruebas("pruebas@ejemplo.com");
+      }
+    });
+
+    it("un usuario que no existe no accede a nada", async () => {
+      await db.conUsuario("nadie@ejemplo.com", async () => {
+        await assert.rejects(datos.listarMovimientos({}), /no existe/);
+      });
+    });
+
+    it("el cron puede listar a todos los usuarios", async () => {
+      await dosUsuarios();
+      assert.deepEqual((await datos.listarUsuarios()).sort(), [A, B2]);
+    });
   });
 
   describe("sueldo automático", () => {

@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
-import { acreditarSueldoSiToca, consumirLimite } from "@/lib/datos";
+import { acreditarSueldoSiToca, consumirLimite, listarUsuarios } from "@/lib/datos";
+import { conUsuario } from "@/lib/db";
 import { ejecutarRecordatorioDiario } from "@/lib/recordatorio-diario";
 import { respuestaLimite } from "@/lib/seguridad";
 import { respuestaError } from "@/lib/validacion";
@@ -36,15 +37,30 @@ async function manejar(request: Request): Promise<Response> {
   }
 
   try {
-    // El sueldo se registra solo el día que llega, aunque el correo esté apagado.
-    const sueldo = await acreditarSueldoSiToca().catch((error) => ({
-      acreditado: false,
-      motivo: error instanceof Error ? error.message : "No se pudo registrar el sueldo.",
-    }));
-    const resultado = await ejecutarRecordatorioDiario({
-      urlApp: process.env.APP_URL || new URL(request.url).origin,
-    });
-    return Response.json({ ...resultado, sueldo }, { status: resultado.error ? 502 : 200 });
+    // Cada persona tiene sus datos y su correo: se recorre a todos, uno por uno.
+    // Que a alguien le falle no impide el aviso de los demás.
+    const urlApp = process.env.APP_URL || new URL(request.url).origin;
+    const resultados = [];
+    for (const correo of await listarUsuarios()) {
+      try {
+        resultados.push(
+          await conUsuario(correo, async () => {
+            // El sueldo se registra solo el día que llega, aunque el correo esté apagado.
+            const sueldo = await acreditarSueldoSiToca().catch((error) => ({
+              acreditado: false,
+              motivo: error instanceof Error ? error.message : "No se pudo registrar el sueldo.",
+            }));
+            const diario = await ejecutarRecordatorioDiario({ urlApp, usuario: correo });
+            return { usuario: correo, ...diario, sueldo };
+          }),
+        );
+      } catch (error) {
+        console.error(`Falló el aviso diario de un usuario:`, error);
+        resultados.push({ usuario: correo, enviado: false, error: "No se pudo procesar a este usuario." });
+      }
+    }
+    const fallo = resultados.some((r) => r.error);
+    return Response.json({ resultados }, { status: fallo ? 502 : 200 });
   } catch (error) {
     return respuestaError(error);
   }

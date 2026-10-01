@@ -59,7 +59,7 @@ function esDuplicado(error: unknown): boolean {
 
 export const AJUSTES_POR_DEFECTO: Omit<Ajustes, "actualizadoEn"> = {
   sueldos: [],
-  email: process.env.REMINDER_EMAIL ?? "",
+  email: "",
   emailActivo: true,
   diaSueldo: null,
   diasAviso: 3,
@@ -173,6 +173,12 @@ export async function quitarTramoSueldo(desde: string): Promise<Ajustes> {
     throw new ErrorNoEncontrado("Ese tramo de sueldo no existe.");
   }
   return guardarSueldos(actuales.filter((t) => t.desde !== desde));
+}
+
+/** Correos de todos los usuarios: el cron los recorre uno por uno. */
+export async function listarUsuarios(): Promise<string[]> {
+  const docs = await (await colecciones.usuarios()).find({}, { projection: { _id: 1 } }).toArray();
+  return docs.map((d) => d._id);
 }
 
 export interface Usuario {

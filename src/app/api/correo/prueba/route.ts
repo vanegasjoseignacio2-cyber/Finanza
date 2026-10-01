@@ -1,5 +1,5 @@
 import { ejecutarRecordatorioDiario } from "@/lib/recordatorio-diario";
-import { protegido } from "@/lib/seguridad";
+import { protegido, usuarioActual } from "@/lib/seguridad";
 import { comoEmail, leerJson } from "@/lib/validacion";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +11,7 @@ export const POST = protegido(async (request) => {
   const resultado = await ejecutarRecordatorioDiario({
     forzar: true,
     destino: destino || undefined,
+    usuario: (await usuarioActual()) ?? undefined,
     urlApp: process.env.APP_URL || new URL(request.url).origin,
   });
   if (resultado.error) return Response.json({ error: resultado.error }, { status: 502 });

@@ -210,6 +210,21 @@ npm run dev          # http://localhost:3000
   (uno solo, sin registro público) y la clave se guarda con `scrypt`. Se cambia
   en **Ajustes → Seguridad**. Exige 12+ caracteres con mayúscula,
   minúscula, número y símbolo, sin tu correo ni palabras comunes.
+- **Varios perfiles, datos separados.** Cada persona entra con su correo y su
+  clave y tiene **su propia base de datos** (movimientos, cuentas, metas, pagos
+  fijos, topes, categorías, ajustes, portadas y envíos). La app toma el usuario
+  de la sesión firmada en cada consulta, así que nadie puede leer ni escribir en
+  la base de otro; sin sesión, no entrega ninguna. El primer usuario conserva la
+  base principal (`MONGODB_DB`); los demás usan la que indique su documento en
+  `usuarios` (campo `base`). Lo compartido (usuarios, intentos de acceso y
+  límites) está en la base principal. El cron recorre a todos los usuarios y
+  manda el aviso de cada uno a su propio correo.
+- **No hay registro.** Un usuario nuevo se inserta a mano, una sola vez, en la
+  colección `usuarios` de Atlas: `_id` = correo en minúsculas, `claveHash`
+  (scrypt), `sesionVersion` 0, `creadoEn` y `base` (un nombre único, por
+  ejemplo `finanza_u_` + 16 caracteres hexadecimales). Cada quien cambia su clave
+  en **Ajustes → Seguridad**. Para restaurar un respaldo en un perfil:
+  `npm run restaurar -- respaldo.json --usuario correo@ejemplo.com`.
 - La sesión es un JWT (HS256) en una cookie `__Host-` httpOnly y `Secure`, de
   6 horas. Las escrituras desde otro origen se rechazan (CSRF).
 - Límites de peticiones por usuario (la identidad sale del token, no de una
