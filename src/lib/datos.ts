@@ -299,6 +299,66 @@ export async function crearCuenta(datos: {
   return aCuenta(doc);
 }
 
+/**
+ * Crea una cuenta. Si es una tarjeta con deuda y se indican cuotas, la deuda no
+ * queda como saldo inicial: se divide en partes iguales (la deuda entre las
+ * cuotas) y se registra una cuota por mes, que salen de lo libre de cada mes.
+ */
+export async function crearCuentaConDeuda(datos: {
+  nombre: string;
+  tipo: TipoCuenta;
+  saldoInicial: number;
+  cupo?: number | null;
+  diaPago?: number | null;
+  deudaCuotas?: number | null;
+  primeraCuota?: "este" | "siguiente";
+}): Promise<{ cuenta: Cuenta; cuotas: number }> {
+  const { deudaCuotas, primeraCuota, ...base } = datos;
+  const deuda = base.tipo === "tarjeta" && base.saldoInicial < 0 ? -base.saldoInicial : 0;
+  if (!deudaCuotas || deuda === 0) return { cuenta: await crearCuenta(base), cuotas: 0 };
+  if (deuda < deudaCuotas) throw new ErrorValidacion("Lo que debes debe alcanzar para al menos $1 por cuota.");
+
+  const cuenta = await crearCuenta({ ...base, saldoInicial: 0 });
+  try {
+    await crearMovimiento({
+      tipo: "gasto",
+      categoria: "otros",
+      monto: deuda,
+      fecha: hoyISO(),
+      nota: "Saldo anterior de la tarjeta",
+      cuentaId: cuenta.id,
+      cuotas: deudaCuotas,
+      primeraCuota,
+    });
+  } catch (error) {
+    // Sin las cuotas, la tarjeta no puede quedar creada a medias.
+    await (await colecciones.cuentas()).deleteOne({ _id: oid(cuenta.id, "esa cuenta") });
+    throw error;
+  }
+  return { cuenta, cuotas: deudaCuotas };
+}
+
+/**
+ * Elimina una tarjeta de crédito y sus compras (gastos e ingresos de esa
+ * cuenta). Las transferencias que la tocan se conservan, para que los saldos de
+ * las otras cuentas no cambien (p. ej. lo que ya pagaste desde tu banco). Las
+ * demás cuentas no se eliminan: se archivan.
+ */
+export async function eliminarCuenta(id: string): Promise<{ movimientos: number }> {
+  const cuenta = (await listarCuentas()).find((c) => c.id === id);
+  if (!cuenta) throw new ErrorNoEncontrado("No encontramos esa cuenta.");
+  if (cuenta.tipo !== "tarjeta") {
+    throw new ErrorValidacion("Solo se pueden eliminar tarjetas de crédito; las demás cuentas se archivan.");
+  }
+  const borrados = await (await colecciones.movimientos()).deleteMany({
+    cuentaId: id,
+    tipo: { $in: ["gasto", "ingreso"] },
+  });
+  await (await colecciones.metas()).updateMany({ cuentaId: id }, { $set: { cuentaId: null } });
+  await (await colecciones.cuentas()).deleteOne({ _id: oid(id, "esa cuenta") });
+  return { movimientos: borrados.deletedCount };
+}
+
 export async function actualizarCuenta(
   id: string,
   cambios: Partial<Pick<Cuenta, "nombre" | "tipo" | "saldoInicial" | "cupo" | "diaPago" | "archivada">>,

@@ -73,3 +73,12 @@ export function datosCuenta(c: Record<string, unknown>) {
         : null,
   };
 }
+
+/** Al crear una tarjeta con deuda: en cuántas cuotas se divide y desde cuándo (opcional). */
+export function datosDeudaCuotas(c: Record<string, unknown>) {
+  const hay = c.deudaCuotas !== undefined && c.deudaCuotas !== null && c.deudaCuotas !== "";
+  return {
+    deudaCuotas: hay ? comoCuotas(c.deudaCuotas) : null,
+    primeraCuota: c.primeraCuota === "siguiente" ? ("siguiente" as const) : ("este" as const),
+  };
+}

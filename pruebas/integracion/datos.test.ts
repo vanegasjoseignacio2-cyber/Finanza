@@ -416,6 +416,60 @@ describe("capa de datos contra MongoDB", { skip: omitir }, () => {
       assert.equal(r.cuotasProximas[4].mes, "2027-03");
     });
 
+    it("una tarjeta con deuda y cuotas divide la deuda en partes iguales, una por mes", async () => {
+      const { cuenta, cuotas } = await datos.crearCuentaConDeuda({
+        nombre: "Nu",
+        tipo: "tarjeta",
+        saldoInicial: -900_000,
+        cupo: 2_000_000,
+        diaPago: 15,
+        deudaCuotas: 3,
+        primeraCuota: "siguiente",
+      });
+      assert.equal(cuotas, 3);
+      assert.equal(cuenta.saldoInicial, 0, "la deuda va en las cuotas, no como saldo inicial");
+      const movs = (await datos.listarMovimientos({ cuentaId: cuenta.id })).sort((a, b) => a.fecha.localeCompare(b.fecha));
+      assert.equal(movs.length, 3);
+      assert.deepEqual(movs.map((m) => m.monto), [300_000, 300_000, 300_000]);
+      assert.ok(movs.every((m) => m.fecha.endsWith("-15") && m.categoria === "otros"));
+      assert.deepEqual(movs.map((m) => m.cuota), [1, 2, 3]);
+      const [c] = (await datos.listarCuentas()).filter((x) => x.id === cuenta.id);
+      assert.equal(calcularSaldos([c], await datos.sumasHistoricas())[0].saldo, -900_000);
+    });
+
+    it("sin cuotas, la deuda queda como saldo inicial y no crea movimientos", async () => {
+      const { cuenta, cuotas } = await datos.crearCuentaConDeuda({ nombre: "Nu", tipo: "tarjeta", saldoInicial: -500_000, deudaCuotas: null });
+      assert.equal(cuotas, 0);
+      assert.equal(cuenta.saldoInicial, -500_000);
+      assert.equal((await datos.listarMovimientos({ cuentaId: cuenta.id })).length, 0);
+    });
+
+    it("si la deuda no alcanza para las cuotas, no deja la tarjeta creada", async () => {
+      const antes = (await datos.listarCuentas()).length;
+      await assert.rejects(datos.crearCuentaConDeuda({ nombre: "Nu", tipo: "tarjeta", saldoInicial: -2, deudaCuotas: 5 }), /por cuota/);
+      assert.equal((await datos.listarCuentas()).length, antes);
+    });
+
+    it("eliminar una tarjeta borra sus compras pero conserva las transferencias", async () => {
+      const t = await conTarjeta();
+      const banco = await datos.crearCuenta({ nombre: "Banco", tipo: "corriente", saldoInicial: 1_000_000 });
+      await compra(t, { cuotas: 3 });
+      await datos.crearMovimiento({ tipo: "transferencia", monto: 50_000, fecha: "2026-10-01", nota: "pago", cuentaId: banco.id, cuentaDestinoId: t.id });
+      const r = await datos.eliminarCuenta(t.id);
+      assert.equal(r.movimientos, 3);
+      assert.ok(!(await datos.listarCuentas()).some((c) => c.id === t.id));
+      const movs = await datos.listarMovimientos({});
+      assert.ok(movs.every((m) => m.tipo === "transferencia"), "solo queda la transferencia");
+      const cuentas = await datos.listarCuentas();
+      assert.equal(calcularSaldos(cuentas, await datos.sumasHistoricas()).find((c) => c.id === banco.id)?.saldo, 950_000);
+    });
+
+    it("solo se eliminan tarjetas: las otras cuentas se archivan", async () => {
+      const banco = await datos.crearCuenta({ nombre: "Banco", tipo: "corriente", saldoInicial: 0 });
+      await assert.rejects(datos.eliminarCuenta(banco.id), /se archivan/);
+      await assert.rejects(datos.eliminarCuenta("6abe7b2eba3046de140c6bcd"), /No encontramos/);
+    });
+
     it("sin cuotas, una compra con tarjeta es un gasto normal", async () => {
       const t = await conTarjeta();
       const m = await compra(t, { cuotas: 1 });

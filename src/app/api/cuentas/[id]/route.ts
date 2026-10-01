@@ -1,4 +1,4 @@
-import { actualizarCuenta } from "@/lib/datos";
+import { actualizarCuenta, eliminarCuenta } from "@/lib/datos";
 import { datosCuenta } from "@/lib/entradas";
 import { protegido } from "@/lib/seguridad";
 import { comoBooleano, leerJson } from "@/lib/validacion";
@@ -15,4 +15,10 @@ export const PATCH = protegido<Ctx>(async (request, { params }) => {
       ? { archivada: comoBooleano(c.archivada) }
       : datosCuenta(c);
   return Response.json({ cuenta: await actualizarCuenta(id, cambios) });
+});
+
+/** Elimina una tarjeta de crédito con sus compras (las demás cuentas se archivan). */
+export const DELETE = protegido<Ctx>(async (_request, { params }) => {
+  const { movimientos } = await eliminarCuenta((await params).id);
+  return Response.json({ ok: true, movimientos });
 });

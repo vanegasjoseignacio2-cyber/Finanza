@@ -4,7 +4,7 @@ import { CreditCard, Plus } from "lucide-react";
 import { useState } from "react";
 import { useCaptura } from "@/components/captura";
 import { useDatos } from "@/components/datos-panel";
-import { FormularioCuenta } from "@/components/paneles/formulario-cuenta";
+import { BotonEliminarTarjeta, FormularioCuenta } from "@/components/paneles/formulario-cuenta";
 import { Boton } from "@/components/ui/boton";
 import { Modal } from "@/components/ui/modal";
 import { Tarjeta } from "@/components/ui/tarjeta";
@@ -61,8 +61,14 @@ export function CuotasTarjeta({ r }: { r: Resumen }) {
                   </span>
                 </span>
               </span>
-              <span className="shrink-0 text-[14.5px] font-semibold tabular text-tinta">
-                {t.saldo < 0 ? `Debes ${pesos(-t.saldo)}` : pesos(t.saldo)}
+              <span className="flex shrink-0 items-center gap-1">
+                <span className="text-[14.5px] font-semibold tabular text-tinta">
+                  {t.saldo < 0 ? `Debes ${pesos(-t.saldo)}` : pesos(t.saldo)}
+                </span>
+                <BotonEliminarTarjeta
+                  cuenta={t}
+                  className="area-toque grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg text-tinta-3 transition-colors hover:bg-superficie-alta hover:text-alerta"
+                />
               </span>
             </li>
           ))}

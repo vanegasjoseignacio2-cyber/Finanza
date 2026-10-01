@@ -20,7 +20,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { Icono } from "@/components/iconos";
-import { FormularioCuenta, TIPOS_CUENTA } from "@/components/paneles/formulario-cuenta";
+import { BotonEliminarTarjeta, FormularioCuenta, TIPOS_CUENTA } from "@/components/paneles/formulario-cuenta";
 import { useAvisos } from "@/components/ui/avisos";
 import { Boton, BotonEnlace } from "@/components/ui/boton";
 import { Campo, Desplegable, Interruptor } from "@/components/ui/campo";
@@ -242,6 +242,7 @@ export function SeccionCuentas({ cuentas }: { cuentas: CuentaConSaldo[] }) {
                 <Pencil className="size-4" aria-hidden="true" />
               </button>
             </Tooltip>
+            {c.tipo === "tarjeta" && <BotonEliminarTarjeta cuenta={c} className={botonIcono} />}
             <Tooltip texto="Archivar">
               <button
                 type="button"
