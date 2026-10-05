@@ -26,7 +26,8 @@ del celular vence el 28 y hoy es 23, lo libre ya no lo cuenta como tuyo.
 | **Movimientos** | Gastos, ingresos, aportes y retiros de metas, transferencias entre cuentas. Saldo por cuenta, búsqueda en todos los meses, edición y "repetir" con un toque. Exportación a CSV. |
 | **Presupuesto** | Tope mensual por categoría (aviso al 85 %, alerta al pasarse), los pagos fijos y la tendencia de seis meses contra tu ingreso. |
 | **Metas** | Varias metas, con aportes **y retiros**. Ritmo real, proyección y, si tienen fecha, cuánto apartar cada mes. |
-| **Ajustes** | Sueldo con historial, cuentas, categorías propias, correo diario (con el estado de los últimos envíos), clave, sesiones y respaldo. |
+| **Calendario** | Festivos de Colombia, vencimiento de los pagos fijos, gastos programados y las cuotas de tu tarjeta de crédito (cada una en su día, con un fondo azul agua). |
+| **Ajustes** | Sueldo con historial, cuentas, categorías propias, correo diario (con la hora a la que quieres recibirlo y el estado de los últimos envíos), clave, sesiones y respaldo. |
 | **Correo diario** | Corto: lo que tienes por pagar y el recordatorio de anotar tus gastos de hoy. Los lunes lleva adjunto el respaldo completo. |
 
 ### Reglas que conviene conocer
@@ -72,10 +73,32 @@ del celular vence el 28 y hoy es 23, lo libre ya no lo cuenta como tuyo.
 ## Cómo ejecutarlo a diario sin VPS y sin pagar
 
 El correo lo dispara una llamada a `POST /api/cron/recordatorios`, autorizada con
-la cabecera `Authorization: Bearer $CRON_SECRET`. Cualquier cosa capaz de hacer
-esa llamada una vez al día sirve. Estas son tus opciones, de más a menos cómoda:
+la cabecera `Authorization: Bearer $CRON_SECRET`. **Cada persona elige en Ajustes
+a qué hora quiere su correo** (de 12:00 a. m. a 11:00 p. m., en la zona horaria
+`TZ_APP`, Colombia por defecto; arranca en las 7:00 a. m.). Por eso la llamada
+debe llegar **cada hora**: la app decide a quién le toca y manda un solo correo
+al día a cada quien. Llamarla de más es seguro. Estas son tus opciones, de más a
+menos cómoda:
 
-### Opción A — Vercel Cron (la recomendada)
+### Opción A — GitHub Actions (la que da la hora exacta)
+
+Ya viene el flujo en `.github/workflows/recordatorio-diario.yml`: llama a la app
+al minuto 5 de cada hora, con reintentos.
+
+- **Coste:** gratis en repositorios públicos; 2.000 minutos al mes en privados
+  (24 llamadas al día gastan unos 720 minutos al mes, redondeando cada una a un
+  minuto).
+- **Ventaja:** funciona aunque cambies de hosting, y puedes lanzarlo a mano desde
+  la pestaña *Actions* (**Run workflow**) para probar.
+- **Configuración:** en *Settings → Secrets and variables → Actions* crea
+  `APP_URL` (`https://finanza-z42s.vercel.app`) y `CRON_SECRET` (el mismo de la app).
+- **A tener en cuenta:** GitHub puede retrasar las tareas programadas cuando hay
+  mucha carga, y en repositorios públicos las desactiva tras 60 días sin
+  actividad. Si el disparo de las 8:05 se atrasa, el correo de las 8:00 sale en
+  el siguiente: la app da **3 horas de margen** a partir de la hora elegida (y
+  reintenta ahí si el proveedor de correo falló).
+
+### Opción B — Vercel Cron (respaldo)
 
 Ya viene configurada en `vercel.json`:
 
@@ -86,44 +109,35 @@ Ya viene configurada en `vercel.json`:
 - **Coste:** gratis en el plan Hobby.
 - **Ventaja:** no hay que configurar nada más. Vercel añade solo la cabecera
   `Authorization: Bearer $CRON_SECRET` si esa variable existe en el proyecto.
-- **A tener en cuenta:** en el plan Hobby se permite **un disparo al día** y
-  Vercel lo ejecuta dentro de la hora indicada, no al minuto exacto. Para un
-  recordatorio diario da igual.
-- La hora del cron va **en UTC**: `0 12 * * *` son las **7:00 a. m. en Colombia**.
-  Para otra hora, resta 5 (Bogotá = UTC−5): las 6:00 a. m. serían `0 11 * * *`.
+- **A tener en cuenta:** en el plan Hobby se permite **un disparo al día**
+  (no se puede pedir cada hora), así que por sí solo no sirve para elegir la
+  hora: solo entrega el correo de quien lo tenga entre las 5:00 y las 7:00 a. m.
+  (la hora del cron va **en UTC**: `0 12 * * *` son las 7:00 a. m. en Colombia).
+  Úsalo junto con la opción A. Con un plan que permita crons por hora, pon
+  `0 * * * *` y no necesitas GitHub.
 
-### Opción B — GitHub Actions (respaldo o alternativa)
-
-Ya viene el flujo en `.github/workflows/recordatorio-diario.yml`, con reintentos.
-
-- **Coste:** gratis en repositorios públicos; 2.000 minutos al mes en privados, y
-  esta tarea gasta segundos.
-- **Ventaja:** funciona aunque cambies de hosting, y puedes lanzarlo a mano desde
-  la pestaña *Actions* (**Run workflow**) para probar.
-- **Configuración:** en *Settings → Secrets and variables → Actions* crea
-  `APP_URL` (`https://tu-app.vercel.app`) y `CRON_SECRET` (el mismo de la app).
-- **A tener en cuenta:** GitHub puede retrasar las tareas programadas cuando hay
-  mucha carga, y en repositorios públicos las desactiva tras 60 días sin
-  actividad.
-
-Puedes usar A y B a la vez: GitHub dispara a las 12:15 UTC, un cuarto de hora
-después de Vercel, y **antes de enviar se reserva el día de forma atómica** en
-la base. Si los dos disparos llegaran al mismo tiempo, solo uno envía (hay una
-prueba de integración que lo comprueba con envíos simultáneos).
+Puedes usar A y B a la vez, o C: **antes de enviar se reserva el día de forma
+atómica** en la base. Si dos disparos llegaran al mismo tiempo, solo uno envía
+(hay una prueba de integración que lo comprueba con envíos simultáneos).
 
 El correo sale **todos los días** mientras el aviso esté activo en Ajustes: es
 corto, con lo que tienes por pagar (vencido, hoy, mañana o en los próximos días)
-y el recordatorio para anotar tus gastos de hoy, con un botón directo a
-"Nuevo". Los lunes lleva adjunto el respaldo. En **Ajustes → Correo diario**
-ves qué pasó los últimos días: enviado o el error exacto.
+y el recordatorio para anotar tus gastos de hoy. Su botón lleva siempre al enlace
+oficial de la app, <https://finanza-z42s.vercel.app/login>, que vive en
+`src/lib/email/enlaces.ts` (ya no depende de `APP_URL`). Los lunes lleva adjunto
+el respaldo. En **Ajustes → Correo diario** ves qué pasó los últimos días:
+enviado o el error exacto. La hora del aviso es obligatoria, y **Enviar prueba**
+manda siempre al correo de destino de esa misma pantalla (si está vacío, pide
+llenarlo; si lo cambiaste, lo guarda antes de enviar): la prueba no acepta otra
+dirección.
 
 ### Opción C — Un disparador externo gratuito
 
 Servicios como **cron-job.org** o **UptimeRobot** (plan gratuito) pueden llamar
-a la URL una vez al día, siempre que dejen poner la cabecera
+a la URL cada hora, siempre que dejen poner la cabecera
 `Authorization: Bearer EL_SECRETO`. El secreto **ya no se acepta en la URL**
 (quedaba en registros e historiales): si el servicio no permite cabeceras,
-usa A o B.
+usa A.
 
 ### Dónde alojar la app
 
@@ -196,7 +210,8 @@ npm run dev          # http://localhost:3000
 1. Sube el repositorio a GitHub y en Vercel elige *Add New → Project*.
 2. Pega **todas** las variables de `.env.example` en *Settings → Environment
    Variables* (incluida `CRON_SECRET`, que es lo que activa el cron de Vercel).
-3. Pon `APP_URL` con la URL final del proyecto: es el enlace del botón del correo.
+3. El botón del correo lleva siempre a `https://finanza-z42s.vercel.app/login`
+   (`src/lib/email/enlaces.ts`): si cambias de dominio, cámbialo ahí.
 4. Despliega y entra con tu usuario. La pantalla **Hoy** te guía: define el sueldo,
    agrega tus pagos fijos y crea una meta.
 5. En **Ajustes → Enviar prueba** comprueba que el correo llega. Mira también

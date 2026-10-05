@@ -51,7 +51,16 @@ export function comoDia(valor: unknown): number {
   return dia;
 }
 
-const TIPOS: TipoMovimiento[] = ["gasto", "ingreso", "ahorro", "retiro", "transferencia"];
+/** Hora del día, entera entre 0 y 23. */
+export function comoHora(valor: unknown): number {
+  const hora = typeof valor === "number" ? valor : Number(valor);
+  if (valor === "" || valor === null || !Number.isInteger(hora) || hora < 0 || hora > 23) {
+    throw new ErrorValidacion("La hora debe estar entre 0 y 23.");
+  }
+  return hora;
+}
+
+const TIPOS: TipoMovimiento[] =["gasto", "ingreso", "ahorro", "retiro", "transferencia"];
 
 export function comoTipo(valor: unknown): TipoMovimiento {
   if (TIPOS.includes(valor as TipoMovimiento)) return valor as TipoMovimiento;

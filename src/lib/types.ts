@@ -94,6 +94,22 @@ export interface RecordatorioCalculado extends Recordatorio {
   esteMes: boolean;
 }
 
+/**
+ * Un gasto que ya tiene fecha en el calendario sin ser un pago fijo: una cuota
+ * de tarjeta de crédito, o un gasto anotado con una fecha que aún no llega.
+ */
+export interface GastoAgendado {
+  id: string;
+  fecha: string; // YYYY-MM-DD
+  monto: number;
+  categoria: string;
+  nota: string;
+  cuentaId: string;
+  /** Número de esta cuota y total, si es una cuota de una compra con tarjeta. */
+  cuota: number | null;
+  cuotas: number | null;
+}
+
 export interface Meta {
   id: string;
   nombre: string;
@@ -152,6 +168,8 @@ export interface Ajustes {
   /** Día del mes (1-31) en que llega el sueldo y se registra solo. null = se registra a mano. */
   diaSueldo: number | null;
   diasAviso: number;
+  /** Hora del día (0-23, en la zona horaria de la app) a la que llega el correo diario. */
+  horaAviso: number;
   respaldoSemanal: boolean;
   actualizadoEn: string;
 }

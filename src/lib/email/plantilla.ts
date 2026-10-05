@@ -171,7 +171,7 @@ function contenidoPagos(o: {
             </tr>
           </table>
 
-          <div style="margin-top:20px;">${boton("Ver mis pagos fijos", `${o.urlApp}/presupuesto#pagos-fijos`)}</div>
+          <div style="margin-top:20px;">${boton("Ver mis pagos fijos", `${o.urlApp}/login`)}</div>
           ${o.conRespaldo ? notaRespaldo() : ""}`;
 }
 
@@ -189,7 +189,7 @@ function contenidoTodoAlDia(o: { urlApp: string; conRespaldo: boolean }): string
             </td>
           </tr></table>
 
-          <div style="margin-top:22px;">${boton("Registrar mis gastos", `${o.urlApp}/nuevo`)}</div>
+          <div style="margin-top:22px;">${boton("Registrar mis gastos", `${o.urlApp}/login`)}</div>
           ${o.conRespaldo ? notaRespaldo() : ""}`;
 }
 
@@ -205,6 +205,7 @@ export interface OpcionesCorreo {
   /** Pagos que vencen pronto o ya vencieron (ver `recordatoriosParaAvisar`). */
   avisos: RecordatorioCalculado[];
   hoy: string;
+  /** Dirección de la app; los botones llevan a su pantalla de entrada (`/login`). */
   urlApp: string;
   conRespaldo?: boolean;
   catalogo?: Catalogo;
@@ -239,7 +240,7 @@ export function construirCorreoDiario(o: OpcionesCorreo): CorreoDiario {
         "Todo al día: no tienes pagos por vencer.",
         "Ingresa a la plataforma y registra tus gastos de hoy.",
         "",
-        `Registrar mis gastos: ${urlApp}/nuevo`,
+        `Registrar mis gastos: ${urlApp}/login`,
         ...lineaRespaldo,
       ].join("\n"),
     };
@@ -271,7 +272,7 @@ export function construirCorreoDiario(o: OpcionesCorreo): CorreoDiario {
       ),
       `Total estimado: ${pesos(total)}`,
       "",
-      `Ver mis pagos fijos: ${urlApp}/presupuesto#pagos-fijos`,
+      `Ver mis pagos fijos: ${urlApp}/login`,
       ...lineaRespaldo,
     ].join("\n"),
   };

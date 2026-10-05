@@ -1,18 +1,25 @@
 "use client";
 
 import { useReducedMotion } from "framer-motion";
-import { CalendarClock, CalendarPlus, ImagePlus, MousePointerClick, PartyPopper } from "lucide-react";
+import { CalendarClock, CalendarPlus, CreditCard, ImagePlus, MousePointerClick, PartyPopper, Receipt } from "lucide-react";
 import { useCallback, useState } from "react";
-import { celdasDelMes, resumenDelMes, type Celda, type DiaCalendario } from "@/components/calendario/datos";
 import { CalendarioEscritorio, type DatosMes } from "@/components/calendario/escenario";
 import { PersonalizarPortada } from "@/components/calendario/personalizar-portada";
+import { useDatos } from "@/components/datos-panel";
 import { ModalPago, ModalPagoFijo } from "@/components/paneles/pagos-fijos";
 import { Boton } from "@/components/ui/boton";
 import { Cabecera } from "@/components/ui/cabecera";
 import { Tarjeta, Vacio } from "@/components/ui/tarjeta";
+import {
+  celdasDelMes,
+  diaConAgenda,
+  resumenDelMes,
+  type Celda,
+  type DiaCalendario,
+} from "@/lib/calendario";
 import { pesos } from "@/lib/dinero";
 import { fechaCorta, fechaLarga, hoyISO, mesActual, sumarMeses } from "@/lib/fechas";
-import type { Portadas, RecordatorioCalculado, Resumen } from "@/lib/types";
+import type { GastoAgendado, Portadas, RecordatorioCalculado, Resumen } from "@/lib/types";
 
 function ProximoPago({
   recordatorios,
@@ -72,6 +79,31 @@ function ProximoPago({
   );
 }
 
+/** Una cuota de tarjeta o un gasto anotado con fecha: solo se consulta, no se paga desde aquí. */
+function GastoDelDia({ g, pasado }: { g: GastoAgendado; pasado: boolean }) {
+  const { catalogo, cuentas } = useDatos();
+  const esCuota = g.cuota !== null;
+  const cuenta = cuentas.find((x) => x.id === g.cuentaId)?.nombre;
+  const Icono = esCuota ? CreditCard : Receipt;
+  const detalle = esCuota
+    ? `Cuota ${g.cuota} de ${g.cuotas} · ${cuenta ?? "Tarjeta"}`
+    : `Gasto anotado${cuenta ? ` · ${cuenta}` : ""}`;
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
+      <span className="flex min-w-0 items-center gap-1.5">
+        <Icono className={`size-3.5 shrink-0 ${pasado ? "text-tinta-3" : "text-agua"}`} aria-hidden="true" />
+        <span className="min-w-0">
+          <span className={`block truncate text-[13.5px] ${pasado ? "text-tinta-3" : "text-tinta-2"}`}>
+            {g.nota || catalogo.etiqueta(g.categoria)}
+          </span>
+          <span className="block text-[12px] text-tinta-3">{detalle}</span>
+        </span>
+      </span>
+      <span className={`text-[13.5px] tabular ${pasado ? "text-tinta-3" : "text-tinta-2"}`}>{pesos(g.monto)}</span>
+    </div>
+  );
+}
+
 function PagosDelDia({
   c,
   puedeRegistrar,
@@ -92,13 +124,21 @@ function PagosDelDia({
       {c.pagos.map((p) => (
         <div key={p.id} className="flex flex-wrap items-center justify-between gap-2">
           <span
-            className={`flex items-center gap-1.5 text-[13.5px] ${
+            className={`flex min-w-0 items-center gap-1.5 text-[13.5px] ${
               p.pagado ? "text-tinta-3 line-through" : p.vencido ? "text-alerta" : "text-tinta-2"
             }`}
           >
             <CalendarClock className="size-3.5 shrink-0" aria-hidden="true" />
-            {p.titulo}
-            {p.montoEstimado > 0 && <span className="tabular">· {pesos(p.montoEstimado)}</span>}
+            <span className="min-w-0">
+              <span className="block">{p.titulo}</span>
+              {(p.fecha !== null || p.montoEstimado > 0) && (
+                <span className="block text-[12px] text-tinta-3 no-underline tabular">
+                  {[p.fecha !== null ? "Gasto programado" : null, p.montoEstimado > 0 ? pesos(p.montoEstimado) : null]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+              )}
+            </span>
           </span>
           {/* Un gasto programado se puede pagar por adelantado, desde cualquier mes. */}
           {(puedeRegistrar || p.fecha !== null) && !p.pagado && (
@@ -107,6 +147,9 @@ function PagosDelDia({
             </Boton>
           )}
         </div>
+      ))}
+      {c.gastos.map((g) => (
+        <GastoDelDia key={g.id} g={g} pasado={c.pasado} />
       ))}
     </div>
   );
@@ -130,7 +173,7 @@ function DiaElegido({
       <Tarjeta titulo="Día">
         <p className="flex items-center gap-2 text-[14px] text-tinta-3">
           <MousePointerClick className="size-4 shrink-0" aria-hidden="true" />
-          Toca un día del calendario para ver sus festivos y pagos.
+          Toca un día del calendario para ver sus festivos, pagos y cuotas.
         </p>
       </Tarjeta>
     );
@@ -138,10 +181,10 @@ function DiaElegido({
   return (
     <Tarjeta titulo={c.esHoy ? "Hoy" : "Día"}>
       <p className="mb-3 text-[15px] font-medium text-tinta">{fechaLarga(c.fecha)}</p>
-      {c.festivo || c.pagos.length > 0 ? (
+      {diaConAgenda(c) ? (
         <PagosDelDia c={c} puedeRegistrar={puedeRegistrar} onRegistrar={onRegistrar} />
       ) : (
-        <p className="text-[13.5px] text-tinta-3">Sin festivos ni pagos fijos este día.</p>
+        <p className="text-[13.5px] text-tinta-3">Sin festivos, pagos ni cuotas este día.</p>
       )}
       {c.fecha >= hoy && (
         <Boton tamano="sm" variante="secundario" className="mt-4" onClick={() => onProgramar(c.fecha)}>
@@ -162,9 +205,9 @@ function ListaDelMes({
   onRegistrar: (r: RecordatorioCalculado) => void;
   puedeRegistrar: boolean;
 }) {
-  const conAlgo = celdas.filter((c): c is DiaCalendario => c !== null && (c.festivo !== null || c.pagos.length > 0));
+  const conAlgo = celdas.filter((c): c is DiaCalendario => c !== null && diaConAgenda(c));
   if (conAlgo.length === 0) {
-    return <Vacio mensaje="Sin festivos ni pagos fijos que caigan este mes." />;
+    return <Vacio mensaje="Sin festivos, pagos fijos ni cuotas de tarjeta que caigan este mes." />;
   }
   return (
     <ul className="flex flex-col">
@@ -178,7 +221,16 @@ function ListaDelMes({
   );
 }
 
-export function VistaCalendario({ resumen: r, portadas: portadasIniciales }: { resumen: Resumen; portadas: Portadas }) {
+export function VistaCalendario({
+  resumen: r,
+  portadas: portadasIniciales,
+  gastos,
+}: {
+  resumen: Resumen;
+  portadas: Portadas;
+  /** Cuotas de tarjeta (de cualquier mes) y gastos anotados con fecha por venir. */
+  gastos: GastoAgendado[];
+}) {
   const hoy = hoyISO();
   const mesHoy = hoy.slice(0, 7);
   const sinMovimiento = useReducedMotion();
@@ -193,10 +245,11 @@ export function VistaCalendario({ resumen: r, portadas: portadasIniciales }: { r
   const abrirPersonalizar = useCallback(() => setPersonalizando(true), []);
   const cerrarPersonalizar = useCallback(() => setPersonalizando(false), []);
 
-  // Los pagos fijos se repiten cada mes, así que cualquier mes se arma aquí
-  // mismo: pasar de hoja no tiene que esperar al servidor.
+  // Los pagos fijos se repiten cada mes y las cuotas llegan de todos los meses,
+  // así que cualquier mes se arma aquí mismo: pasar de hoja no tiene que esperar
+  // al servidor.
   const datosDe = (m: string): DatosMes => {
-    const celdas = celdasDelMes(m, hoy, r.recordatorios);
+    const celdas = celdasDelMes(m, hoy, r.recordatorios, gastos);
     return { celdas, resumen: resumenDelMes(celdas) };
   };
 
@@ -223,7 +276,7 @@ export function VistaCalendario({ resumen: r, portadas: portadasIniciales }: { r
     <div className="flex flex-col gap-4 sm:gap-5">
       <Cabecera
         titulo="Calendario"
-        subtitulo="Festivos de Colombia y cuándo vencen tus pagos fijos."
+        subtitulo="Festivos de Colombia, cuándo vencen tus pagos fijos y las cuotas de tu tarjeta."
         acciones={
           <>
             {mes !== mesHoy && (

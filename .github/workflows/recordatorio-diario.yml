@@ -1,20 +1,27 @@
-# Disparo diario del correo de recordatorios.
+# Disparo del correo de recordatorios, cada hora.
 #
-# Alternativa (o respaldo) al cron de Vercel: GitHub Actions es gratis en
-# repositorios públicos y da 2.000 minutos al mes en privados; esta tarea gasta
-# unos segundos al día.
+# Cada persona elige en Ajustes a qué hora quiere su correo. El plan gratuito de
+# Vercel solo permite un cron al día, así que este flujo es el que llama a la app
+# cada hora; la app decide a quién le toca (solo manda a quien tenga esa hora) y
+# la reserva atómica del día evita cualquier duplicado. El cron diario de Vercel
+# (vercel.json) queda de respaldo.
+#
+# GitHub Actions es gratis en repositorios públicos y da 2.000 minutos al mes en
+# privados; esta tarea gasta unos segundos por llamada (24 al día ≈ 720 minutos
+# al mes contando el redondeo a minuto completo).
 #
 # Antes de activarlo, crea dos secretos en el repositorio
 # (Settings → Secrets and variables → Actions):
-#   APP_URL      https://tu-app.vercel.app
+#   APP_URL      https://finanza-z42s.vercel.app
 #   CRON_SECRET  el mismo valor que pusiste en las variables de la app
 name: Recordatorio diario
 
 on:
   schedule:
-    # 12:15 UTC: un cuarto de hora después del cron de Vercel, como respaldo.
-    # Si ambos llegan a correr, la reserva atómica del día evita el duplicado.
-    - cron: "15 12 * * *"
+    # Al minuto 5 de cada hora (en UTC; la app convierte a su zona horaria).
+    # GitHub puede demorar unos minutos un disparo programado: por eso la app da
+    # unas horas de margen si el correo no salió a la hora exacta.
+    - cron: "5 * * * *"
   workflow_dispatch:
 
 jobs:

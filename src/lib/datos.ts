@@ -3,6 +3,7 @@
  * lo necesario y se entrega a las funciones puras de `finanzas.ts`.
  */
 import { Binary, BSON, MongoServerError, ObjectId } from "mongodb";
+import { cache } from "react";
 import { crearCatalogo, slugCategoria, type Catalogo } from "./categorias";
 import {
   colecciones,
@@ -18,6 +19,7 @@ import {
   componerResumen,
   cuentaPrincipal,
   calendarioCuotas,
+  HORA_AVISO_POR_DEFECTO,
   repartirCuotas,
   sueldoPara,
   type FilaMensual,
@@ -30,6 +32,7 @@ import type {
   Cuenta,
   Envio,
   EstadoEnvio,
+  GastoAgendado,
   Meta,
   Movimiento,
   Portada,
@@ -63,12 +66,23 @@ export const AJUSTES_POR_DEFECTO: Omit<Ajustes, "actualizadoEn"> = {
   emailActivo: true,
   diaSueldo: null,
   diasAviso: 3,
+  horaAviso: HORA_AVISO_POR_DEFECTO,
   respaldoSemanal: true,
 };
 
 async function leerAjustesDoc(): Promise<AjustesDoc | null> {
   return (await colecciones.ajustes()).findOne({ _id: AJUSTES_ID });
 }
+
+/**
+ * Lecturas de una sola consulta por petición, SOLO para pintar páginas: el
+ * layout y la página piden lo mismo (cuentas, metas, pagos fijos...) y, sin esto,
+ * lo consultaban dos veces. `cache` de React vive lo que dura una renderización
+ * y no comparte nada entre peticiones; fuera de una renderización (rutas de la
+ * API, cron, pruebas) no memoriza nada. Por eso la lógica que escribe y luego
+ * vuelve a leer sigue usando las funciones de siempre.
+ */
+const ajustesDocPeticion = cache(leerAjustesDoc);
 
 function normalizarAjustes(doc: AjustesDoc | null): Ajustes {
   // Modelo anterior: un único ingreso mensual. Se convierte en un tramo que
@@ -82,6 +96,7 @@ function normalizarAjustes(doc: AjustesDoc | null): Ajustes {
     emailActivo: doc?.emailActivo ?? AJUSTES_POR_DEFECTO.emailActivo,
     diaSueldo: doc?.diaSueldo ?? AJUSTES_POR_DEFECTO.diaSueldo,
     diasAviso: doc?.diasAviso ?? AJUSTES_POR_DEFECTO.diasAviso,
+    horaAviso: doc?.horaAviso ?? AJUSTES_POR_DEFECTO.horaAviso,
     respaldoSemanal: doc?.respaldoSemanal ?? AJUSTES_POR_DEFECTO.respaldoSemanal,
     actualizadoEn: doc?.actualizadoEn ?? ahora(),
   };
@@ -91,8 +106,10 @@ export async function obtenerAjustes(): Promise<Ajustes> {
   return normalizarAjustes(await leerAjustesDoc());
 }
 
+export const ajustesPeticion = cache(async (): Promise<Ajustes> => normalizarAjustes(await ajustesDocPeticion()));
+
 export async function guardarAjustes(
-  parcial: Partial<Pick<Ajustes, "email" | "emailActivo" | "diaSueldo" | "diasAviso" | "respaldoSemanal">>,
+  parcial: Partial<Pick<Ajustes, "email" | "emailActivo" | "diaSueldo" | "diasAviso" | "horaAviso" | "respaldoSemanal">>,
 ): Promise<Ajustes> {
   await (await colecciones.ajustes()).updateOne(
     { _id: AJUSTES_ID },
@@ -118,12 +135,18 @@ export interface ResultadoSueldo {
  * crearse ese mes.
  */
 export async function acreditarSueldoSiToca(hoy = hoyISO()): Promise<ResultadoSueldo> {
-  const ajustes = await obtenerAjustes();
+  // El documento de ajustes se lee una vez por petición: la página de Hoy lo
+  // vuelve a necesitar enseguida para calcular el resumen.
+  const doc = await ajustesDocPeticion();
+  const ajustes = normalizarAjustes(doc);
   if (!ajustes.diaSueldo) return { acreditado: false, motivo: "No hay un día de sueldo configurado." };
 
   const mes = hoy.slice(0, 7);
   const dia = Math.min(ajustes.diaSueldo, diasDelMes(mes));
   if (Number(hoy.slice(8, 10)) < dia) return { acreditado: false, motivo: "Todavía no llega el día del sueldo." };
+  // Se mira cada vez que se abre Hoy: si el mes ya quedó reservado no hace falta
+  // consultar los movimientos.
+  if (doc?.sueldoAcreditado === mes) return { acreditado: false, motivo: "El sueldo de este mes ya se registró." };
 
   const monto = sueldoPara(ajustes.sueldos, mes);
   if (monto <= 0) return { acreditado: false, motivo: "No hay un sueldo definido para este mes." };
@@ -217,6 +240,9 @@ export async function obtenerCatalogo(): Promise<Catalogo> {
   return crearCatalogo(await listarCategoriasPersonales());
 }
 
+export const categoriasPersonalesPeticion = cache(listarCategoriasPersonales);
+export const catalogoPeticion = cache(async (): Promise<Catalogo> => crearCatalogo(await categoriasPersonalesPeticion()));
+
 export async function crearCategoria(datos: {
   label: string;
   icono: string;
@@ -271,7 +297,8 @@ function aCuenta(doc: CuentaDoc): Cuenta {
 /** Todas las cuentas. Si no hay ninguna crea la principal, que recibe lo antiguo. */
 export async function listarCuentas(): Promise<Cuenta[]> {
   const col = await colecciones.cuentas();
-  if ((await col.estimatedDocumentCount()) === 0) {
+  let docs = await col.find({}).sort({ creadoEn: 1 }).toArray();
+  if (docs.length === 0) {
     await col.updateOne(
       { predeterminada: true },
       {
@@ -287,10 +314,12 @@ export async function listarCuentas(): Promise<Cuenta[]> {
       },
       { upsert: true },
     );
+    docs = await col.find({}).sort({ creadoEn: 1 }).toArray();
   }
-  const docs = await col.find({}).sort({ creadoEn: 1 }).toArray();
   return docs.map(aCuenta);
 }
+
+export const cuentasPeticion = cache(listarCuentas);
 
 export async function crearCuenta(datos: {
   nombre: string;
@@ -402,7 +431,8 @@ function aMeta(doc: MetaDoc): Meta {
 /** Todas las metas. La primera vez convierte la meta única del modelo anterior. */
 export async function listarMetas(): Promise<Meta[]> {
   const col = await colecciones.metas();
-  if ((await col.estimatedDocumentCount()) === 0) {
+  let docs = await col.find({}).sort({ creadoEn: 1 }).toArray();
+  if (docs.length === 0) {
     const legado = await leerAjustesDoc();
     if (legado?.metaAhorro && legado.metaAhorro > 0) {
       await col.updateOne(
@@ -422,11 +452,13 @@ export async function listarMetas(): Promise<Meta[]> {
         },
         { upsert: true },
       );
+      docs = await col.find({}).sort({ creadoEn: 1 }).toArray();
     }
   }
-  const docs = await col.find({}).sort({ creadoEn: 1 }).toArray();
   return docs.map(aMeta);
 }
+
+export const metasPeticion = cache(listarMetas);
 
 export async function crearMeta(datos: {
   nombre: string;
@@ -468,6 +500,8 @@ export async function listarPresupuestos(): Promise<Presupuesto[]> {
   return docs.map((d) => ({ categoria: d._id, tope: d.tope }));
 }
 
+export const presupuestosPeticion = cache(listarPresupuestos);
+
 /** Fija el tope mensual de una categoría. Con 0 lo quita. */
 export async function fijarPresupuesto(categoria: string, tope: number): Promise<void> {
   const catalogo = await obtenerCatalogo();
@@ -504,8 +538,9 @@ function aMovimiento(doc: MovimientoDoc, principalId: string): Movimiento {
   };
 }
 
+/** La cuenta que recibe lo antiguo sin cuenta. Se pide por petición: no cambia mientras se pinta una página. */
 async function idPrincipal(): Promise<string> {
-  return cuentaPrincipal(await listarCuentas())?.id ?? "";
+  return cuentaPrincipal(await cuentasPeticion())?.id ?? "";
 }
 
 async function exigirCuenta(id: string): Promise<Cuenta> {
@@ -529,7 +564,7 @@ export interface FiltrosMovimientos {
 }
 
 export async function listarMovimientos(filtros: FiltrosMovimientos = {}): Promise<Movimiento[]> {
-  const principalId = await idPrincipal();
+  const principal = idPrincipal();
   const condiciones: Record<string, unknown>[] = [];
 
   if (filtros.mes && !filtros.q) condiciones.push({ mes: filtros.mes });
@@ -541,7 +576,7 @@ export async function listarMovimientos(filtros: FiltrosMovimientos = {}): Promi
       { cuentaDestinoId: filtros.cuentaId },
     ];
     // Lo antiguo sin cuenta pertenece a la principal.
-    if (filtros.cuentaId === principalId) propias.push({ cuentaId: null });
+    if (filtros.cuentaId === (await principal)) propias.push({ cuentaId: null });
     condiciones.push({ $or: propias });
   }
   if (filtros.q) {
@@ -551,11 +586,13 @@ export async function listarMovimientos(filtros: FiltrosMovimientos = {}): Promi
     condiciones.push({ $or: [{ nota: patron }, { categoria: { $in: categorias } }] });
   }
 
-  const docs = await (await colecciones.movimientos())
-    .find(condiciones.length ? { $and: condiciones } : {})
-    .sort({ fecha: -1, creadoEn: -1 })
-    .limit(filtros.limite ?? 500)
-    .toArray();
+  const encontrar = async () =>
+    (await colecciones.movimientos())
+      .find(condiciones.length ? { $and: condiciones } : {})
+      .sort({ fecha: -1, creadoEn: -1 })
+      .limit(filtros.limite ?? 500)
+      .toArray();
+  const [docs, principalId] = await Promise.all([encontrar(), principal]);
   return docs.map((d) => aMovimiento(d, principalId));
 }
 
@@ -654,7 +691,7 @@ export async function crearMovimiento(datos: DatosMovimiento): Promise<Movimient
   if (cuotas > 1) return crearCompraEnCuotas(listo, cuotas, datos.primeraCuota === "siguiente" ? 1 : 0);
   const doc: MovimientoDoc = { _id: new ObjectId(), ...listo, creadoEn: ahora() };
   await (await colecciones.movimientos()).insertOne(doc);
-  return aMovimiento(doc, await idPrincipal());
+  return aMovimiento(doc, listo.cuentaId ?? "");
 }
 
 /**
@@ -686,7 +723,7 @@ async function crearCompraEnCuotas(
     return { _id: new ObjectId(), ...listo, monto, fecha, mes: fecha.slice(0, 7), compraId, cuota: i + 1, cuotas, creadoEn };
   });
   await (await colecciones.movimientos()).insertMany(docs);
-  return aMovimiento(docs[0], await idPrincipal());
+  return aMovimiento(docs[0], listo.cuentaId ?? "");
 }
 
 export async function actualizarMovimiento(id: string, datos: DatosMovimiento): Promise<Movimiento> {
@@ -735,6 +772,8 @@ export async function listarRecordatorios(): Promise<Recordatorio[]> {
   const docs = await (await colecciones.recordatorios()).find({}).sort({ dia: 1 }).toArray();
   return docs.map(aRecordatorio);
 }
+
+export const recordatoriosPeticion = cache(listarRecordatorios);
 
 async function validarCategoriaRecordatorio(categoria: string): Promise<void> {
   if (categoria && !(await obtenerCatalogo()).existe(categoria, "gasto")) {
@@ -885,22 +924,49 @@ export async function cuotasProximas(mes: string, limite = 12): Promise<CuotaPro
   return filas.map((f) => ({ mes: f._id, total: f.total, cantidad: f.cantidad }));
 }
 
+/**
+ * Lo que el calendario dibuja además de los pagos fijos: todas las cuotas de
+ * tarjeta (en el mes que caigan) y los gastos anotados con una fecha que aún no
+ * llega. Los gastos que paga un pago fijo no entran: el pago ya sale en el calendario.
+ */
+export async function listarGastosAgendados(hoy = hoyISO()): Promise<GastoAgendado[]> {
+  const docs = await (await colecciones.movimientos())
+    .find(
+      { tipo: "gasto", recurrenteId: null, $or: [{ cuota: { $ne: null } }, { fecha: { $gt: hoy } }] },
+      { projection: { fecha: 1, monto: 1, categoria: 1, nota: 1, cuentaId: 1, cuota: 1, cuotas: 1 } },
+    )
+    .sort({ fecha: 1 })
+    .limit(1000)
+    .toArray();
+  const principalId = await idPrincipal();
+  return docs.map((d) => ({
+    id: d._id.toHexString(),
+    fecha: d.fecha,
+    monto: d.monto,
+    categoria: d.categoria,
+    nota: d.nota ?? "",
+    cuentaId: d.cuentaId ?? principalId,
+    cuota: d.cuota ?? null,
+    cuotas: d.cuotas ?? null,
+  }));
+}
+
 export async function calcularResumen(mes = mesActual()): Promise<Resumen> {
   const hoy = hoyISO();
   const mesReal = hoy.slice(0, 7);
   const [ajustes, movimientosMes, movimientosMesReal, recordatorios, metas, cuentas, presupuestos, sumas, serie, proximas, catalogo] =
     await Promise.all([
-      obtenerAjustes(),
+      ajustesPeticion(),
       listarMovimientos({ mes }),
       mes === mesReal ? Promise.resolve(null) : listarMovimientos({ mes: mesReal }),
-      listarRecordatorios(),
-      listarMetas(),
-      listarCuentas(),
-      listarPresupuestos(),
+      recordatoriosPeticion(),
+      metasPeticion(),
+      cuentasPeticion(),
+      presupuestosPeticion(),
       sumasHistoricas(),
       serieMensual("2000-01", mes),
       cuotasProximas(mes),
-      obtenerCatalogo(),
+      catalogoPeticion(),
     ]);
 
   return componerResumen({

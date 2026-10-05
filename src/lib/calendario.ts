@@ -1,14 +1,18 @@
-import { diasDelMes } from "@/lib/fechas";
-import { festivosDelMes, type Festivo } from "@/lib/festivos";
-import type { RecordatorioCalculado } from "@/lib/types";
+import { diasDelMes } from "./fechas";
+import { festivosDelMes, type Festivo } from "./festivos";
+import type { GastoAgendado, RecordatorioCalculado } from "./types";
 
 export interface DiaCalendario {
   fecha: string; // YYYY-MM-DD
   dia: number;
   esHoy: boolean;
+  /** Ya pasó (antes de hoy). */
+  pasado: boolean;
   esDomingo: boolean;
   festivo: Festivo | null;
   pagos: RecordatorioCalculado[];
+  /** Cuotas de tarjeta de crédito y gastos anotados con fecha: no son pagos fijos. */
+  gastos: GastoAgendado[];
 }
 
 /** Casilla de la grilla: un día del mes, o null como relleno para completar semanas. */
@@ -18,6 +22,11 @@ export interface ResumenMes {
   pagos: number;
   total: number;
   festivos: number;
+  /** Cuotas de tarjeta que caen en el mes y lo que suman. */
+  cuotas: number;
+  totalCuotas: number;
+  /** Otros gastos anotados con fecha en el mes. */
+  gastosAnotados: number;
 }
 
 /**
@@ -27,11 +36,15 @@ export interface ResumenMes {
  * Los recordatorios traen el estado (pagado/vencido) del mes REAL en curso sin
  * importar qué mes se mire: en otro mes solo se ubica el día de vencimiento y el
  * estado se descarta, para no mostrar como pagado algo de otro mes.
+ *
+ * `gastos` son las cuotas de tarjeta y los gastos con fecha: cada uno cae en su
+ * propio día, en el mes que sea.
  */
 export function celdasDelMes(
   mes: string,
   hoy: string,
   recordatorios: RecordatorioCalculado[],
+  gastos: GastoAgendado[] = [],
 ): Celda[] {
   const [anio, m] = mes.split("-").map(Number);
   const total = diasDelMes(mes);
@@ -50,6 +63,13 @@ export function celdasDelMes(
     pagosPorDia.set(dia, lista);
   }
 
+  const gastosPorDia = new Map<number, GastoAgendado[]>();
+  for (const g of gastos) {
+    if (g.fecha.slice(0, 7) !== mes) continue;
+    const dia = Number(g.fecha.slice(8, 10));
+    gastosPorDia.set(dia, [...(gastosPorDia.get(dia) ?? []), g]);
+  }
+
   // 0 = lunes … 6 = domingo
   const inicio = (new Date(Date.UTC(anio, m - 1, 1)).getUTCDay() + 6) % 7;
   const celdas: Celda[] = Array.from({ length: inicio }, () => null);
@@ -60,9 +80,11 @@ export function celdasDelMes(
       fecha,
       dia,
       esHoy: fecha === hoy,
+      pasado: fecha < hoy,
       esDomingo: (inicio + dia - 1) % 7 === 6,
       festivo: festivos.get(fecha) ?? null,
       pagos: pagosPorDia.get(dia) ?? [],
+      gastos: gastosPorDia.get(dia) ?? [],
     });
   }
   while (celdas.length % 7 !== 0) celdas.push(null);
@@ -70,14 +92,25 @@ export function celdasDelMes(
 }
 
 export function resumenDelMes(celdas: Celda[]): ResumenMes {
-  let pagos = 0;
-  let total = 0;
-  let festivos = 0;
+  const resumen: ResumenMes = { pagos: 0, total: 0, festivos: 0, cuotas: 0, totalCuotas: 0, gastosAnotados: 0 };
   for (const c of celdas) {
     if (!c) continue;
-    if (c.festivo) festivos++;
-    pagos += c.pagos.length;
-    total += c.pagos.reduce((s, p) => s + p.montoEstimado, 0);
+    if (c.festivo) resumen.festivos++;
+    resumen.pagos += c.pagos.length;
+    resumen.total += c.pagos.reduce((s, p) => s + p.montoEstimado, 0);
+    for (const g of c.gastos) {
+      if (g.cuota !== null) {
+        resumen.cuotas++;
+        resumen.totalCuotas += g.monto;
+      } else {
+        resumen.gastosAnotados++;
+      }
+    }
   }
-  return { pagos, total, festivos };
+  return resumen;
+}
+
+/** ¿Tiene el día algo que mostrar además del número? */
+export function diaConAgenda(c: DiaCalendario): boolean {
+  return c.festivo !== null || c.pagos.length > 0 || c.gastos.length > 0;
 }

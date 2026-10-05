@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
+import { bloquearScroll } from "./bloqueo-scroll";
 import { Tooltip } from "./tooltip";
 
 interface Props {
@@ -19,6 +20,13 @@ const pila: object[] = [];
 
 export function Modal({ abierto, titulo, descripcion, onCerrar, children }: Props) {
   const panel = useRef<HTMLDivElement>(null);
+
+  // Aparte del resto: solo depende de si está abierto, no de `onCerrar`, que cambia
+  // en cada render del padre y haría soltar y volver a fijar la página cada vez.
+  useEffect(() => {
+    if (!abierto) return;
+    return bloquearScroll();
+  }, [abierto]);
 
   useEffect(() => {
     if (!abierto) return;
@@ -47,8 +55,6 @@ export function Modal({ abierto, titulo, descripcion, onCerrar, children }: Prop
     };
 
     const anterior = document.activeElement as HTMLElement | null;
-    const overflowPrevio = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     document.addEventListener("keydown", alPulsar);
     const t = window.setTimeout(() => {
       panel.current
@@ -59,7 +65,6 @@ export function Modal({ abierto, titulo, descripcion, onCerrar, children }: Prop
     return () => {
       pila.splice(pila.indexOf(yo), 1);
       document.removeEventListener("keydown", alPulsar);
-      document.body.style.overflow = overflowPrevio;
       window.clearTimeout(t);
       anterior?.focus?.();
     };
@@ -80,7 +85,7 @@ export function Modal({ abierto, titulo, descripcion, onCerrar, children }: Prop
             aria-label="Cerrar"
             tabIndex={-1}
             onClick={onCerrar}
-            className="absolute inset-0 cursor-default bg-[#02060d]/75 backdrop-blur-sm"
+            className="absolute inset-0 cursor-default touch-none bg-[#02060d]/75 backdrop-blur-sm"
           />
           <motion.div
             ref={panel}
@@ -91,9 +96,9 @@ export function Modal({ abierto, titulo, descripcion, onCerrar, children }: Prop
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 16, scale: 0.98, transition: { duration: 0.15 } }}
             transition={{ type: "spring", stiffness: 340, damping: 30 }}
-            className="relative max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl border border-borde-suave bg-superficie/95 p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] shadow-2xl sm:rounded-3xl sm:pb-6"
+            className="relative max-h-[92dvh] w-full max-w-lg overflow-y-auto overscroll-contain rounded-t-3xl border border-borde-suave bg-superficie/95 p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl sm:rounded-3xl sm:p-6 sm:pb-6"
           >
-            <div className="mb-5 flex items-start justify-between gap-4">
+            <div className="mb-4 flex items-start justify-between gap-4 sm:mb-5">
               <div className="min-w-0">
                 <h2 className="font-display text-xl font-semibold text-tinta">{titulo}</h2>
                 {descripcion && (

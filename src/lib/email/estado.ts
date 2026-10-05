@@ -1,3 +1,4 @@
+import { ZONA } from "../fechas";
 import { proveedorConfigurado } from "./enviar";
 
 export interface DiagnosticoCorreo {
@@ -5,6 +6,8 @@ export interface DiagnosticoCorreo {
   credenciales: boolean;
   remitente: boolean;
   cron: boolean;
+  /** Zona horaria en que se interpreta la hora del aviso (ej. America/Bogota). */
+  zona: string;
 }
 
 /** Estado de la configuración del servidor: solo banderas, nunca credenciales. */
@@ -19,5 +22,6 @@ export function diagnosticoCorreo(): DiagnosticoCorreo {
     credenciales,
     remitente: Boolean(process.env.EMAIL_FROM || process.env.SMTP_USER),
     cron: Boolean(process.env.CRON_SECRET),
+    zona: ZONA,
   };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { CreditCard, Link2, Trash2 } from "lucide-react";
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, CreditCard, HandCoins, Link2, PiggyBank, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
   createContext,
@@ -19,7 +19,7 @@ import { Confirmar } from "@/components/ui/confirmar";
 import { Campo, Selector } from "@/components/ui/campo";
 import { CampoDinero } from "@/components/ui/campo-dinero";
 import { Modal } from "@/components/ui/modal";
-import { Segmentado } from "@/components/ui/segmentado";
+import { Segmentado, type Opcion } from "@/components/ui/segmentado";
 import { peticion } from "@/lib/cliente";
 import { pesos } from "@/lib/dinero";
 import { fechaCorta, hoyISO, nombreMes } from "@/lib/fechas";
@@ -132,12 +132,13 @@ export function useCaptura(): Captura {
   return valor;
 }
 
-const TIPOS: { valor: TipoMovimiento; etiqueta: string }[] = [
-  { valor: "gasto", etiqueta: "Gasto" },
-  { valor: "ingreso", etiqueta: "Ingreso" },
-  { valor: "ahorro", etiqueta: "Aporte" },
-  { valor: "retiro", etiqueta: "Retiro" },
-  { valor: "transferencia", etiqueta: "Transferir" },
+// Con iconos, el selector cabe en una sola fila en el celular (antes ocupaba tres).
+const TIPOS: Opcion<TipoMovimiento>[] = [
+  { valor: "gasto", etiqueta: "Gasto", icono: ArrowUpRight },
+  { valor: "ingreso", etiqueta: "Ingreso", icono: ArrowDownLeft },
+  { valor: "ahorro", etiqueta: "Aporte", icono: PiggyBank },
+  { valor: "retiro", etiqueta: "Retiro", icono: HandCoins },
+  { valor: "transferencia", etiqueta: "Transferir", icono: ArrowLeftRight },
 ];
 
 const AYUDA_TIPO: Record<TipoMovimiento, string> = {
@@ -323,13 +324,7 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
   return (
     <form onSubmit={enviar} className="flex flex-col gap-4">
       <div>
-        <Segmentado
-          etiqueta="Tipo"
-          opciones={TIPOS}
-          valor={tipo}
-          onCambio={setTipo}
-          columnas="grid-cols-2 sm:grid-cols-5"
-        />
+        <Segmentado etiqueta="Tipo de movimiento" opciones={TIPOS} valor={tipo} onCambio={setTipo} ocultarEtiqueta />
         <p className="mt-1.5 text-[12.5px] text-tinta-3">{AYUDA_TIPO[tipo]}</p>
       </div>
 

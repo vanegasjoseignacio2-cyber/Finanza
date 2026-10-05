@@ -1,19 +1,22 @@
+import { obtenerAjustes } from "@/lib/datos";
 import { ejecutarRecordatorioDiario } from "@/lib/recordatorio-diario";
-import { protegido, usuarioActual } from "@/lib/seguridad";
-import { comoEmail, leerJson } from "@/lib/validacion";
+import { protegido } from "@/lib/seguridad";
+import { ErrorValidacion } from "@/lib/validacion";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-export const POST = protegido(async (request) => {
-  const c = await leerJson(request).catch(() => ({}) as Record<string, unknown>);
-  const destino = comoEmail(c.destino);
-  const resultado = await ejecutarRecordatorioDiario({
-    forzar: true,
-    destino: destino || undefined,
-    usuario: (await usuarioActual()) ?? undefined,
-    urlApp: process.env.APP_URL || new URL(request.url).origin,
-  });
+/**
+ * Manda el correo de prueba al correo que la persona guardó en Ajustes. No acepta
+ * otra dirección: con ella, cualquier sesión podía escribir a donde quisiera desde
+ * el correo de la app.
+ */
+export const POST = protegido(async () => {
+  const { email } = await obtenerAjustes();
+  if (!email) {
+    throw new ErrorValidacion("Escribe tu correo de destino en Ajustes y guárdalo antes de enviar la prueba.");
+  }
+  const resultado = await ejecutarRecordatorioDiario({ forzar: true, destino: email });
   if (resultado.error) return Response.json({ error: resultado.error }, { status: 502 });
   if (!resultado.enviado) {
     return Response.json({ error: resultado.motivo ?? "No se pudo enviar." }, { status: 400 });

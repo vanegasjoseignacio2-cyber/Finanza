@@ -2,9 +2,10 @@
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Tooltip } from "@/components/ui/tooltip";
+import type { Celda, DiaCalendario } from "@/lib/calendario";
 import { pesos } from "@/lib/dinero";
 import { fechaLarga, MESES } from "@/lib/fechas";
-import type { Celda, DiaCalendario } from "./datos";
+import type { GastoAgendado } from "@/lib/types";
 
 const SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 
@@ -15,7 +16,8 @@ const SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
  */
 const MEDIDAS = {
   normal: { padV: [26, 18], padH: 28, cabecera: 40, divisor: [12, 14], semana: 18, dia: [32, 28], fuente: 15, pie: 34 },
-  apilado: { padV: [16, 14], padH: 18, cabecera: 36, divisor: [8, 10], semana: 16, dia: [28, 24], fuente: 13.5, pie: 30 },
+  // El pie apilado admite dos líneas: la leyenda ya no cabe en una a 380px.
+  apilado: { padV: [16, 14], padH: 18, cabecera: 36, divisor: [8, 10], semana: 16, dia: [28, 24], fuente: 13.5, pie: 46 },
 } as const;
 const ALTO_PUNTO = 4;
 const SEPARACION_FILAS = 4;
@@ -49,8 +51,18 @@ function tonoDePagos(c: DiaCalendario): Tono {
 const COLOR_TONO: Record<Exclude<Tono, null>, string> = {
   vencido: "var(--color-alerta)",
   pendiente: "var(--color-verde)",
-  pagado: "var(--color-borde)",
+  // Un gris que se vea sobre el papel oscuro: el anterior casi desaparecía.
+  pagado: "var(--color-tinta-3)",
 };
+
+/** Cuotas de tarjeta y gastos con fecha: azul agua si aún vienen, gris si ya pasaron. */
+const COLOR_GASTO = "var(--color-agua)";
+const COLOR_GASTO_PASADO = "var(--color-tinta-3)";
+
+function textoGasto(g: GastoAgendado): string {
+  const titulo = g.cuota !== null ? `Cuota ${g.cuota}/${g.cuotas}` : "Gasto";
+  return `${titulo}${g.nota ? ` ${g.nota}` : ""}: ${pesos(g.monto)}`;
+}
 
 function detallesDe(c: DiaCalendario): string[] {
   return [
@@ -58,6 +70,7 @@ function detallesDe(c: DiaCalendario): string[] {
     ...c.pagos.map(
       (p) => `${p.titulo}${p.montoEstimado > 0 ? `: ${pesos(p.montoEstimado)}` : ""}${p.pagado ? " (pagado)" : ""}`,
     ),
+    ...c.gastos.map(textoGasto),
   ].filter((d): d is string => Boolean(d));
 }
 
@@ -85,13 +98,18 @@ function Dia({
       : c.esDomingo
         ? "text-alerta"
         : "text-tinta";
+  // Con una cuota o un gasto por venir, el día lleva un fondo azul agua tenue:
+  // el punto de abajo solo, de 4px, pasaba desapercibido.
+  const conGastoPorVenir = c.gastos.length > 0 && !c.pasado;
   const fondo = seleccionado
     ? "bg-acento"
     : c.esHoy
       ? "bg-white/12"
-      : interactivo
-        ? "hover:bg-white/8"
-        : "";
+      : conGastoPorVenir
+        ? `bg-agua/15 ${interactivo ? "hover:bg-agua/25" : ""}`
+        : interactivo
+          ? "hover:bg-white/8"
+          : "";
 
   const estilo = {
     width: m.dia[0],
@@ -104,15 +122,20 @@ function Dia({
     boxShadow: c.esHoy && !seleccionado && !tono ? "inset 0 0 0 1px rgba(255,255,255,.45)" : undefined,
   };
   const clase = `flex items-center justify-center tabular transition-colors duration-150 ${
-    seleccionado || destacado || tono ? "font-semibold" : "font-normal"
+    seleccionado || destacado || tono || c.gastos.length > 0 ? "font-semibold" : "font-normal"
   } ${color} ${fondo}`;
 
+  // Hasta dos puntos bajo el número: el estado del pago y las cuotas o gastos.
+  const colores = [
+    ...(tono ? [COLOR_TONO[tono]] : []),
+    ...(c.gastos.length > 0 ? [c.pasado ? COLOR_GASTO_PASADO : COLOR_GASTO] : []),
+  ];
   const punto = (
-    <span
-      aria-hidden
-      className="rounded-full"
-      style={{ width: ALTO_PUNTO, height: ALTO_PUNTO, background: tono ? COLOR_TONO[tono] : "transparent" }}
-    />
+    <span aria-hidden className="flex items-center justify-center gap-[3px]" style={{ height: ALTO_PUNTO }}>
+      {colores.map((color, i) => (
+        <span key={i} className="rounded-full" style={{ width: ALTO_PUNTO, height: ALTO_PUNTO, background: color }} />
+      ))}
+    </span>
   );
 
   // La hoja de atrás no es interactiva: número plano, sin tooltip ni foco.
@@ -177,11 +200,12 @@ function BotonMes({
   );
 }
 
-const LEYENDA = [
+const LEYENDA: { texto: string; clase: string; marca: string | null; punto?: string }[] = [
   { texto: "Festivo", clase: "text-aviso", marca: null },
   { texto: "Pendiente", clase: "text-tinta-3", marca: COLOR_TONO.pendiente },
   { texto: "Vencido", clase: "text-tinta-3", marca: COLOR_TONO.vencido },
   { texto: "Pagado", clase: "text-tinta-3", marca: COLOR_TONO.pagado },
+  { texto: "Cuota o gasto", clase: "text-tinta-3", marca: null, punto: COLOR_GASTO },
 ];
 
 /**
@@ -283,13 +307,15 @@ export function HojaMes({
       </div>
 
       <div
-        className="flex items-center gap-3 overflow-hidden border-t border-borde-suave text-[11px] whitespace-nowrap"
+        className="flex flex-wrap content-center items-center gap-x-3 gap-y-1 overflow-hidden border-t border-borde-suave text-[11px] whitespace-nowrap"
         style={{ marginTop: apilado ? MARGEN_PIE : "auto", height: m.pie }}
       >
         {LEYENDA.map((l) => (
           <span key={l.texto} className={`flex items-center gap-1.5 ${l.clase}`}>
             {l.marca ? (
               <span className="size-2.5 rounded-[3px]" style={{ border: `1.5px solid ${l.marca}` }} aria-hidden />
+            ) : l.punto ? (
+              <span className="size-1.5 rounded-full" style={{ background: l.punto }} aria-hidden />
             ) : (
               <span className="size-1.5 rounded-full bg-current" aria-hidden />
             )}

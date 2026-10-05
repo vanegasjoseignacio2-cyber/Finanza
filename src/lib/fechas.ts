@@ -22,6 +22,17 @@ export function hoyISO(): string {
   }).format(new Date());
 }
 
+/** Hora del día (0-23) en la zona horaria de la app. */
+export function horaActual(ahora = new Date()): number {
+  const hora = new Intl.DateTimeFormat("en-GB", { timeZone: ZONA, hour: "2-digit", hourCycle: "h23" }).format(ahora);
+  return Number(hora) % 24;
+}
+
+/** 7 -> "7:00 a. m.", 0 -> "12:00 a. m.", 15 -> "3:00 p. m." */
+export function textoHora(hora: number): string {
+  return `${hora % 12 || 12}:00 ${hora < 12 ? "a. m." : "p. m."}`;
+}
+
 /** Mes actual (YYYY-MM) en la zona horaria de la app. */
 export function mesActual(): string {
   return hoyISO().slice(0, 7);

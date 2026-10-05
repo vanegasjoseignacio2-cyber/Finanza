@@ -167,6 +167,23 @@ function calcularProgramado(r: Recordatorio, movimientosDelMes: Movimiento[], ho
   };
 }
 
+/* ─── Hora del aviso diario ──────────────────────────────────────────────── */
+
+export const HORA_AVISO_POR_DEFECTO = 7;
+
+/**
+ * El disparo del correo corre cada hora y puede llegar tarde: si pasó la hora
+ * elegida y todavía no salió, sale en la siguiente ejecución, pero solo dentro de
+ * esta ventana. Más tarde, el día se da por perdido en vez de mandar un aviso
+ * "de la mañana" por la noche.
+ */
+export const GRACIA_AVISO_HORAS = 3;
+
+/** ¿Ya es (o acaba de pasar) la hora a la que la persona quiere su correo? */
+export function esHoraDelAviso(horaActual: number, horaAviso: number): boolean {
+  return horaActual >= horaAviso && horaActual < horaAviso + GRACIA_AVISO_HORAS;
+}
+
 /** Pagos que merecen un correo: activos, sin pagar y dentro del margen (o vencidos). */
 export function recordatoriosParaAvisar(
   calculados: RecordatorioCalculado[],

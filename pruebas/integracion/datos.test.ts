@@ -215,18 +215,41 @@ describe("capa de datos contra MongoDB", { skip: omitir }, () => {
       return { ok: true, proveedor: "resend" as const };
     };
     const resultados = await Promise.all([
-      diario.ejecutarRecordatorioDiario({ enviar }),
-      diario.ejecutarRecordatorioDiario({ enviar }),
-      diario.ejecutarRecordatorioDiario({ enviar }),
+      diario.ejecutarRecordatorioDiario({ enviar, hora: 7 }),
+      diario.ejecutarRecordatorioDiario({ enviar, hora: 7 }),
+      diario.ejecutarRecordatorioDiario({ enviar, hora: 7 }),
     ]);
     assert.equal(enviados, 1);
     assert.equal(resultados.filter((r) => r.enviado).length, 1);
     assert.equal((await datos.listarEnvios())[0].estado, "enviado");
   });
 
+  it("guarda la hora del aviso y por defecto es las 7", async () => {
+    assert.equal((await datos.obtenerAjustes()).horaAviso, 7);
+    assert.equal((await datos.guardarAjustes({ horaAviso: 18 })).horaAviso, 18);
+    assert.equal((await datos.obtenerAjustes()).horaAviso, 18);
+  });
+
+  it("manda el correo solo a la hora elegida (o en las horas de gracia) y sin dejar rastro antes", async () => {
+    await datos.guardarAjustes({ email: "yo@ejemplo.com", horaAviso: 9 });
+    let enviados = 0;
+    const enviar = async () => {
+      enviados++;
+      return { ok: true, proveedor: "resend" as const };
+    };
+    assert.equal((await diario.ejecutarRecordatorioDiario({ enviar, hora: 8 })).enviado, false);
+    assert.equal((await diario.ejecutarRecordatorioDiario({ enviar, hora: 12 })).enviado, false);
+    assert.equal(enviados, 0);
+    assert.equal((await datos.listarEnvios()).length, 0, "fuera de hora no reserva ni registra el día");
+    assert.equal((await diario.ejecutarRecordatorioDiario({ enviar, hora: 10 })).enviado, true);
+    assert.equal((await diario.ejecutarRecordatorioDiario({ enviar, hora: 11 })).enviado, false, "ya salió hoy");
+    assert.equal(enviados, 1);
+  });
+
   it("registra el error del proveedor para mostrarlo en Ajustes", async () => {
     await datos.guardarAjustes({ email: "yo@ejemplo.com" });
     const r = await diario.ejecutarRecordatorioDiario({
+      hora: 7,
       enviar: async () => ({ ok: false, proveedor: "smtp" as const, error: "535 credenciales" }),
     });
     assert.equal(r.enviado, false);
@@ -481,6 +504,29 @@ describe("capa de datos contra MongoDB", { skip: omitir }, () => {
       const [cuenta] = (await datos.listarCuentas()).filter((c) => c.id === t.id);
       const saldos = calcularSaldos([cuenta], await datos.sumasHistoricas());
       assert.equal(saldos[0].saldo, -100_000);
+    });
+
+    it("el calendario recibe todas las cuotas de la tarjeta, cada una en su fecha", async () => {
+      const t = await conTarjeta();
+      await compra(t);
+      const agendados = await datos.listarGastosAgendados("2026-10-05");
+      assert.deepEqual(agendados.map((g) => g.fecha), ["2026-09-30", "2026-10-30", "2026-11-30"]);
+      assert.deepEqual(agendados.map((g) => [g.cuota, g.cuotas]), [[1, 3], [2, 3], [3, 3]]);
+      assert.equal(agendados[0].nota, "Nevera");
+      assert.equal(agendados[0].cuentaId, t.id);
+      assert.equal(agendados.reduce((suma, g) => suma + g.monto, 0), 100_000);
+    });
+
+    it("el calendario trae también un gasto anotado con fecha futura, pero no uno de hoy ni un pago fijo", async () => {
+      const pago = await datos.crearRecordatorio({ titulo: "Arriendo", dia: 7, categoria: "arriendo", montoEstimado: 500_000 });
+      const base = { tipo: "gasto" as const, categoria: "mercado", monto: 20_000 };
+      await datos.crearMovimiento({ ...base, fecha: "2026-10-05", nota: "de hoy" });
+      await datos.crearMovimiento({ ...base, fecha: "2026-10-20", nota: "futuro" });
+      await datos.crearMovimiento({ ...base, fecha: "2026-10-25", nota: "pago", recurrenteId: pago.id });
+      await datos.crearMovimiento({ tipo: "ingreso", categoria: "sueldo", monto: 1, fecha: "2026-10-22", nota: "no es gasto" });
+      const agendados = await datos.listarGastosAgendados("2026-10-05");
+      assert.deepEqual(agendados.map((g) => g.nota), ["futuro"]);
+      assert.equal(agendados[0].cuota, null);
     });
 
     it("rechaza cuotas fuera de una tarjeta, de un gasto o del rango", async () => {

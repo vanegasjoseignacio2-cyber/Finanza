@@ -10,6 +10,9 @@ import {
   calendarioCuotas,
   calcularTendencia,
   componerResumen,
+  esHoraDelAviso,
+  GRACIA_AVISO_HORAS,
+  HORA_AVISO_POR_DEFECTO,
   recordatoriosParaAvisar,
   repartirCuotas,
   sueldoPara,
@@ -667,5 +670,41 @@ describe("calendario de las cuotas", () => {
     assert.equal(r.gastado, 140_000);
     assert.equal(r.cuotasDelMes, 100_000);
     assert.equal(r.cuotasProximas.length, 1);
+  });
+});
+
+describe("hora del aviso diario", () => {
+  it("toca a la hora elegida y en las horas de gracia que siguen", () => {
+    assert.equal(esHoraDelAviso(8, 8), true);
+    assert.equal(esHoraDelAviso(9, 8), true);
+    assert.equal(esHoraDelAviso(8 + GRACIA_AVISO_HORAS - 1, 8), true);
+  });
+
+  it("no toca antes de la hora ni cuando la gracia ya se agotó", () => {
+    assert.equal(esHoraDelAviso(7, 8), false);
+    assert.equal(esHoraDelAviso(8 + GRACIA_AVISO_HORAS, 8), false);
+    assert.equal(esHoraDelAviso(22, 8), false);
+  });
+
+  it("a las 11 p. m. solo toca esa hora: la gracia no cruza la medianoche", () => {
+    assert.equal(esHoraDelAviso(23, 23), true);
+    assert.equal(esHoraDelAviso(0, 23), false);
+    assert.equal(esHoraDelAviso(1, 23), false);
+  });
+
+  it("a medianoche toca en las primeras horas del día", () => {
+    assert.equal(esHoraDelAviso(0, 0), true);
+    assert.equal(esHoraDelAviso(2, 0), true);
+    assert.equal(esHoraDelAviso(3, 0), false);
+  });
+
+  it("el cron diario de Vercel (7:00 a. m. en Colombia) alcanza a quien eligió entre las 5 y las 7", () => {
+    for (const hora of [5, 6, 7]) assert.equal(esHoraDelAviso(7, hora), true);
+    assert.equal(esHoraDelAviso(7, 4), false);
+    assert.equal(esHoraDelAviso(7, 8), false);
+  });
+
+  it("por defecto es a las 7", () => {
+    assert.equal(HORA_AVISO_POR_DEFECTO, 7);
   });
 });

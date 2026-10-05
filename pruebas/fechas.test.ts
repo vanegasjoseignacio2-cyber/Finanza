@@ -5,11 +5,14 @@ import {
   diasEntre,
   esFechaValida,
   esMesValido,
+  horaActual,
   mesCorto,
   nombreMes,
   proximoVencimiento,
   sumarMeses,
   sumarMesesAFecha,
+  textoHora,
+  ZONA,
 } from "../src/lib/fechas";
 
 describe("sumarMeses", () => {
@@ -101,5 +104,24 @@ describe("sumarMesesAFecha", () => {
     assert.equal(sumarMesesAFecha("2026-01-31", 1), "2026-02-28");
     assert.equal(sumarMesesAFecha("2026-01-31", 2), "2026-03-31");
     assert.equal(sumarMesesAFecha("2028-01-31", 1), "2028-02-29");
+  });
+});
+
+describe("hora del aviso", () => {
+  it("escribe la hora en formato de 12 horas", () => {
+    assert.equal(textoHora(0), "12:00 a. m.");
+    assert.equal(textoHora(7), "7:00 a. m.");
+    assert.equal(textoHora(12), "12:00 p. m.");
+    assert.equal(textoHora(15), "3:00 p. m.");
+    assert.equal(textoHora(23), "11:00 p. m.");
+  });
+
+  it("lee la hora en la zona de la app, no en la del servidor", { skip: ZONA !== "America/Bogota" && "solo aplica con la zona por defecto" }, () => {
+    // 12:30 UTC son las 7:30 a. m. en Bogotá (UTC−5, sin horario de verano).
+    assert.equal(horaActual(new Date("2026-10-05T12:30:00Z")), 7);
+    // Medianoche UTC todavía es la noche anterior en Bogotá.
+    assert.equal(horaActual(new Date("2026-10-05T00:10:00Z")), 19);
+    // Y 05:00 UTC es la medianoche de Bogotá: la hora es 0, nunca 24.
+    assert.equal(horaActual(new Date("2026-10-05T05:00:00Z")), 0);
   });
 });

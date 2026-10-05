@@ -240,6 +240,8 @@ interface PropsDesplegable {
   etiqueta: string;
   ayuda?: string;
   error?: string;
+  /** Marca el campo con asterisco: siempre debe haber una opción elegida. */
+  obligatorio?: boolean;
   value: string;
   onChange: (valor: string) => void;
   opciones: { valor: string; etiqueta: string }[];
@@ -247,9 +249,9 @@ interface PropsDesplegable {
 }
 
 /** Select con opciones como datos en vez de `<option>` (más cómodo cuando ya tienes un array). */
-export function Desplegable({ etiqueta, ayuda, error, value, onChange, opciones, placeholder }: PropsDesplegable) {
+export function Desplegable({ etiqueta, ayuda, error, obligatorio, value, onChange, opciones, placeholder }: PropsDesplegable) {
   return (
-    <Envuelto etiqueta={etiqueta} ayuda={ayuda} error={error}>
+    <Envuelto etiqueta={etiqueta} ayuda={ayuda} error={error} obligatorio={obligatorio}>
       {(id, descritoPor) => (
         <MenuSelect
           id={id}

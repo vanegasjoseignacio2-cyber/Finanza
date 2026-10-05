@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { Anillos, Troqueles } from "./anillado";
-import type { Celda, ResumenMes } from "./datos";
+import type { Celda, ResumenMes } from "@/lib/calendario";
 import { Escala } from "./escala";
 import { EsquinaDoblada } from "./esquina-doblada";
 import { altoHojaApilada, HojaMes } from "./hoja-mes";

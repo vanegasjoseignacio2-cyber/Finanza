@@ -77,6 +77,7 @@ export function ajustes(parcial: Partial<Ajustes> = {}): Ajustes {
     emailActivo: true,
     diaSueldo: null,
     diasAviso: 3,
+    horaAviso: 7,
     respaldoSemanal: true,
     actualizadoEn: "2026-09-01T00:00:00.000Z",
     ...parcial,

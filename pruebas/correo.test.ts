@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { URL_APP_OFICIAL, URL_ENTRADA } from "../src/lib/email/enlaces";
 import { construirCorreoDiario } from "../src/lib/email/plantilla";
 import { componerResumen, recordatoriosParaAvisar } from "../src/lib/finanzas";
 import { entrada, recordatorio } from "./fabricas";
@@ -19,10 +20,10 @@ describe("correo diario: todo al día", () => {
     assert.match(c.texto, /Todo al día: no tienes pagos por vencer/);
   });
 
-  it("el botón lleva directo a anotar un gasto", () => {
+  it("el botón lleva a la pantalla de entrada de la app", () => {
     const c = correo();
-    assert.match(c.html, /href="https:\/\/app\.test\/nuevo"/);
-    assert.match(c.texto, /Registrar mis gastos: https:\/\/app\.test\/nuevo/);
+    assert.match(c.html, /href="https:\/\/app\.test\/login"/);
+    assert.match(c.texto, /Registrar mis gastos: https:\/\/app\.test\/login/);
   });
 
   it("no mezcla nada de pagos", () => {
@@ -35,7 +36,7 @@ describe("correo diario: pagos por atender", () => {
   it("habla solo de pagos: sin invitación a registrar gastos, libre, metas ni alertas", () => {
     const c = correo({ recordatorios: [recordatorio({ titulo: "Plan celular", dia: 22, montoEstimado: 54_900 })] });
     assert.match(c.html, /Por pagar/);
-    assert.ok(!/registra tus gastos|Todo al día|\/nuevo/.test(c.html + c.texto));
+    assert.ok(!/registra tus gastos|Todo al día/.test(c.html + c.texto));
     assert.ok(!/libre|Metas|Para revisar/i.test(c.html + c.texto));
   });
 
@@ -51,9 +52,10 @@ describe("correo diario: pagos por atender", () => {
     assert.match(c.texto, /Total estimado: \$\s?144\.800/);
   });
 
-  it("el botón lleva a los pagos fijos", () => {
+  it("el botón lleva a la pantalla de entrada de la app", () => {
     const c = correo({ recordatorios: [recordatorio({ dia: 22 })] });
-    assert.match(c.html, /href="https:\/\/app\.test\/presupuesto#pagos-fijos"/);
+    assert.match(c.html, /href="https:\/\/app\.test\/login"/);
+    assert.match(c.texto, /Ver mis pagos fijos: https:\/\/app\.test\/login/);
   });
 
   it("destaca los pagos vencidos", () => {
@@ -66,6 +68,27 @@ describe("correo diario: pagos por atender", () => {
     const c = correo({ recordatorios: [recordatorio({ titulo: '<img src=x onerror="alert(1)">', dia: 22 })] });
     assert.ok(!c.html.includes("<img src=x"));
     assert.ok(c.html.includes("&lt;img src=x"));
+  });
+});
+
+describe("enlace oficial", () => {
+  it("es el de la app publicada y su entrada es /login", () => {
+    assert.equal(URL_APP_OFICIAL, "https://finanza-z42s.vercel.app");
+    assert.equal(URL_ENTRADA, "https://finanza-z42s.vercel.app/login");
+  });
+
+  it("con el enlace oficial, el botón de ambos correos lleva a /login", () => {
+    for (const avisos of [[], [recordatorio({ dia: 22 })]]) {
+      const resumen = componerResumen(entrada({ recordatorios: avisos }));
+      const c = construirCorreoDiario({
+        avisos: recordatoriosParaAvisar(resumen.recordatorios, 3),
+        hoy: "2026-09-21",
+        urlApp: URL_APP_OFICIAL,
+      });
+      assert.ok(c.html.includes(`href="${URL_ENTRADA}"`));
+      assert.ok(c.texto.includes(URL_ENTRADA));
+      assert.ok(!/localhost/.test(c.html + c.texto));
+    }
   });
 });
 

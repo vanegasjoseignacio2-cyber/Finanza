@@ -16,8 +16,9 @@ function coincide(a: string, b: string): boolean {
 
 /**
  * Dispara el correo del día. Lo llaman Vercel Cron, GitHub Actions o un
- * servicio externo, siempre con el secreto compartido. Llamarlo dos veces es
- * seguro: solo una llamada llega a enviar.
+ * servicio externo, siempre con el secreto compartido. Corre cada hora: a cada
+ * persona le sale una sola vez al día, a la hora que eligió en Ajustes. Llamarlo
+ * muchas veces es seguro: solo una llamada llega a enviar.
  */
 async function manejar(request: Request): Promise<Response> {
   const secreto = process.env.CRON_SECRET;
@@ -39,7 +40,6 @@ async function manejar(request: Request): Promise<Response> {
   try {
     // Cada persona tiene sus datos y su correo: se recorre a todos, uno por uno.
     // Que a alguien le falle no impide el aviso de los demás.
-    const urlApp = process.env.APP_URL || new URL(request.url).origin;
     const resultados = [];
     for (const correo of await listarUsuarios()) {
       try {
@@ -50,7 +50,7 @@ async function manejar(request: Request): Promise<Response> {
               acreditado: false,
               motivo: error instanceof Error ? error.message : "No se pudo registrar el sueldo.",
             }));
-            const diario = await ejecutarRecordatorioDiario({ urlApp, usuario: correo });
+            const diario = await ejecutarRecordatorioDiario({ usuario: correo });
             return { usuario: correo, ...diario, sueldo };
           }),
         );

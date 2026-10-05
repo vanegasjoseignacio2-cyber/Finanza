@@ -35,7 +35,7 @@ import { peticion } from "@/lib/cliente";
 import { pesos } from "@/lib/dinero";
 import { LARGO_MAXIMO_CLAVE, evaluarClave } from "@/lib/politica-clave";
 import type { DiagnosticoCorreo } from "@/lib/email/estado";
-import { fechaCorta, mesActual, nombreMes } from "@/lib/fechas";
+import { fechaCorta, mesActual, nombreMes, textoHora } from "@/lib/fechas";
 import { sueldoPara } from "@/lib/finanzas";
 import type { Ajustes, CuentaConSaldo, Envio, TramoSueldo } from "@/lib/types";
 
@@ -318,6 +318,11 @@ export function SeccionCuentas({ cuentas }: { cuentas: CuentaConSaldo[] }) {
 
 /* ─── Correo diario ──────────────────────────────────────────────────────── */
 
+/** "America/Bogota" -> "Colombia"; cualquier otra zona se muestra como viene. */
+function nombreZona(zona: string): string {
+  return zona === "America/Bogota" ? "Colombia" : zona.replace(/_/g, " ");
+}
+
 const ESTADO_ENVIO: Record<Envio["estado"], { texto: string; clase: string }> = {
   enviado: { texto: "Enviado", clase: "text-verde" },
   error: { texto: "Falló", clase: "text-alerta" },
@@ -336,10 +341,37 @@ export function SeccionCorreo({
 }) {
   const { ocupado, ejecutar } = useAccion();
   const [email, setEmail] = useState(ajustes.email);
+  const [errorCorreo, setErrorCorreo] = useState("");
   const [emailActivo, setEmailActivo] = useState(ajustes.emailActivo);
   const [respaldoSemanal, setRespaldoSemanal] = useState(ajustes.respaldoSemanal);
   const [diasAviso, setDiasAviso] = useState(ajustes.diasAviso);
+  const [horaAviso, setHoraAviso] = useState(ajustes.horaAviso);
   const listo = diagnostico.credenciales && diagnostico.remitente;
+
+  /**
+   * La prueba va siempre al correo guardado en Ajustes: si está vacío se pide
+   * llenarlo, y si lo cambiaste sin guardar, se guarda antes de enviar.
+   */
+  async function enviarPrueba() {
+    const destino = email.trim();
+    if (!destino) {
+      setErrorCorreo("Escribe tu correo de destino para poder enviar la prueba.");
+      return;
+    }
+    await ejecutar(
+      "prueba",
+      async () => {
+        if (destino !== ajustes.email) {
+          await peticion("/api/ajustes", {
+            method: "PUT",
+            body: JSON.stringify({ email: destino, horaAviso: ajustes.horaAviso }),
+          });
+        }
+        await peticion("/api/correo/prueba", { method: "POST" });
+      },
+      `Correo de prueba enviado a ${destino}. Revisa también spam.`,
+    );
+  }
 
   const checks = [
     {
@@ -362,7 +394,7 @@ export function SeccionCorreo({
               () =>
                 peticion("/api/ajustes", {
                   method: "PUT",
-                  body: JSON.stringify({ email, emailActivo, respaldoSemanal, diasAviso }),
+                  body: JSON.stringify({ email, emailActivo, respaldoSemanal, diasAviso, horaAviso }),
                 }),
               "Ajustes del correo guardados.",
             );
@@ -370,8 +402,8 @@ export function SeccionCorreo({
           className="flex flex-col gap-3"
         >
           <p className="text-[13.5px] leading-relaxed text-tinta-3">
-            Te llega todos los días: lo que tienes por pagar y el recordatorio para anotar tus gastos de hoy. Los
-            lunes lleva el respaldo adjunto.
+            Te llega todos los días a la hora que elijas: lo que tienes por pagar y el recordatorio para anotar
+            tus gastos de hoy. Los lunes lleva el respaldo adjunto.
           </p>
           <Campo
             etiqueta="Correo de destino"
@@ -379,10 +411,22 @@ export function SeccionCorreo({
             inputMode="email"
             autoComplete="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              setErrorCorreo("");
+            }}
+            error={errorCorreo || undefined}
             placeholder="tucorreo@gmail.com"
           />
           <Interruptor etiqueta="Enviar el aviso diario" activo={emailActivo} onCambio={setEmailActivo} />
+          <Desplegable
+            etiqueta="Hora del aviso"
+            obligatorio
+            value={String(horaAviso)}
+            onChange={(v) => setHoraAviso(Number(v))}
+            opciones={Array.from({ length: 24 }, (_, hora) => ({ valor: String(hora), etiqueta: textoHora(hora) }))}
+            ayuda={`Hora de ${nombreZona(diagnostico.zona)}. Llega en esa hora, con unos minutos de margen.`}
+          />
           <Interruptor
             etiqueta="Respaldo semanal adjunto"
             descripcion="Cada lunes, con todos tus datos en un archivo."
@@ -405,15 +449,9 @@ export function SeccionCorreo({
             <Boton
               type="button"
               variante="secundario"
-              disabled={!listo || !email}
+              disabled={!listo}
               cargando={ocupado === "prueba"}
-              onClick={() =>
-                ejecutar(
-                  "prueba",
-                  () => peticion("/api/correo/prueba", { method: "POST", body: JSON.stringify({ destino: email }) }),
-                  `Correo de prueba enviado a ${email}. Revisa también spam.`,
-                )
-              }
+              onClick={enviarPrueba}
             >
               <Send className="size-4" aria-hidden="true" />
               Enviar prueba

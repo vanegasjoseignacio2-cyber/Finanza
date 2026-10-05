@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { pesos } from "@/lib/dinero";
 import type { Portadas } from "@/lib/types";
-import type { ResumenMes } from "./datos";
+import type { ResumenMes } from "@/lib/calendario";
 
 /**
  * Seis fondos hechos con la paleta de la app (verde, agua, aviso, alerta, gris),
@@ -122,6 +122,17 @@ export function Portada({
           <span className="rounded-full bg-black/50 px-2 py-0.5 text-[10.5px] font-semibold text-white tabular backdrop-blur-sm">
             {resumen.pagos} {resumen.pagos === 1 ? "pago fijo" : "pagos fijos"}
             {resumen.total > 0 && ` · ${pesos(resumen.total)}`}
+          </span>
+        )}
+        {resumen.cuotas > 0 && (
+          <span className="rounded-full bg-black/50 px-2 py-0.5 text-[10.5px] font-semibold text-white tabular backdrop-blur-sm">
+            {resumen.cuotas} {resumen.cuotas === 1 ? "cuota de tarjeta" : "cuotas de tarjeta"}
+            {resumen.totalCuotas > 0 && ` · ${pesos(resumen.totalCuotas)}`}
+          </span>
+        )}
+        {resumen.gastosAnotados > 0 && (
+          <span className="rounded-full bg-black/50 px-2 py-0.5 text-[10.5px] font-semibold text-white backdrop-blur-sm">
+            {resumen.gastosAnotados} {resumen.gastosAnotados === 1 ? "gasto anotado" : "gastos anotados"}
           </span>
         )}
         {resumen.festivos > 0 && (
