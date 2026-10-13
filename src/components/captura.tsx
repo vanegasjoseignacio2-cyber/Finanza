@@ -24,7 +24,7 @@ import { Segmentado, type Opcion } from "@/components/ui/segmentado";
 import { peticion } from "@/lib/cliente";
 import { pesos } from "@/lib/dinero";
 import { fechaCorta, fechaLarga, hoyISO, nombreMes } from "@/lib/fechas";
-import { calendarioCuotas, repartirCuotas } from "@/lib/finanzas";
+import { calendarioCuotas, primeraCuotaPorDefecto, repartirCuotas } from "@/lib/finanzas";
 import type { Movimiento, TipoMovimiento } from "@/lib/types";
 
 /** Lo que se precarga al abrir: vacío (nuevo), un movimiento (editar) o una copia (repetir). */
@@ -256,12 +256,15 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
   const tarjetas = cuentasActivas.filter((c) => c.tipo === "tarjeta");
   const diaPago = cuentaElegida?.diaPago ?? null;
   // Si el día de pago de este mes ya pasó, la primera cuota se cobra el mes que viene.
-  const diaDeLaCompra = Number(fecha.slice(8, 10)) || 1;
-  const primeraPorDefecto: "este" | "siguiente" = diaPago !== null && diaPago < diaDeLaCompra ? "siguiente" : "este";
+  const primeraPorDefecto: "este" | "siguiente" = primeraCuotaPorDefecto(fecha, diaPago) === 1 ? "siguiente" : "este";
   const primera = primeraElegida ?? primeraPorDefecto;
   const montosCuota = monto && monto >= nCuotas ? repartirCuotas(monto, nCuotas) : [];
+  // Un gasto con tarjeta se descuenta el día en que se paga la tarjeta (salvo un pago fijo,
+  // que va al mes que toca). Sin día de pago no se puede saber cuándo: se pide ponerlo.
+  const sinDiaPago = conTarjeta && diaPago === null;
+  const seCobraAlPagar = conTarjeta && diaPago !== null && !recurrenteId;
   const fechasCuotas =
-    nCuotas > 1 && /^\d{4}-\d{2}-\d{2}$/.test(fecha)
+    seCobraAlPagar && /^\d{4}-\d{2}-\d{2}$/.test(fecha)
       ? calendarioCuotas(fecha, nCuotas, diaPago, primera === "siguiente" ? 1 : 0)
       : [];
   const conAnio = (f: string) => `${fechaCorta(f)} ${f.slice(0, 4)}`;
@@ -271,10 +274,12 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
           montosCuota[0] === montosCuota[1]
             ? ` de ${pesos(montosCuota[1])}`
             : `: la primera de ${pesos(montosCuota[0])} y ${nCuotas - 1} de ${pesos(montosCuota[1])}`
-        }. ${diaPago !== null ? `Pagas el día ${diaPago} de cada mes` : "Una por mes"}: de ${conAnio(fechasCuotas[0])} a ${conAnio(fechasCuotas[fechasCuotas.length - 1])}. Cada cuota se descuenta de lo libre (tu sueldo) del mes en que cae.`
+        }. Pagas el día ${diaPago} de cada mes: de ${conAnio(fechasCuotas[0])} a ${conAnio(fechasCuotas[fechasCuotas.length - 1])}. Cada cuota se descuenta de lo libre (tu sueldo) del mes en que cae.`
       : nCuotas > 1
         ? "Escribe el monto total de la compra."
-        : "En una sola cuota. Si es a plazos, elige en cuántos meses.";
+        : fechasCuotas.length > 0
+          ? `En una sola cuota. Se descuenta el ${conAnio(fechasCuotas[0])} (día de pago de ${cuentaElegida?.nombre}), de lo libre de ${nombreMes(fechasCuotas[0].slice(0, 7))}, no del mes de la compra. Si es a plazos, elige en cuántos meses.`
+          : "En una sola cuota. Si es a plazos, elige en cuántos meses.";
 
   // Pagos fijos que este gasto podría estar pagando.
   const vinculables = pendientes.filter((r) => r.activo && (!r.pagado || r.id === borrador.recurrenteId));
@@ -324,7 +329,7 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
       metaId: tipo === "ahorro" || tipo === "retiro" ? metaId : null,
       recurrenteId: tipo === "gasto" && recurrenteId ? recurrenteId : null,
       cuotas: nCuotas > 1 ? nCuotas : undefined,
-      primeraCuota: nCuotas > 1 ? primera : undefined,
+      primeraCuota: conTarjeta ? primera : undefined,
     };
     try {
       await peticion(editando ? `/api/movimientos/${borrador.id}` : "/api/movimientos", {
@@ -335,7 +340,9 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
       avisos.exito(
         nCuotas > 1
           ? `Compra registrada en ${nCuotas} cuotas. Verás una por mes.`
-          : fueraDelMes
+          : seCobraAlPagar && fechasCuotas[0]
+            ? `Compra con tarjeta registrada: se descuenta el ${conAnio(fechasCuotas[0])}, cuando pagas ${cuentaElegida?.nombre}.`
+            : fueraDelMes
           ? `Registrado en ${nombreMes(mesDeLaFecha)}, no en el mes en curso. Búscalo en Movimientos, en ese mes.`
           : editando
             ? "Movimiento actualizado."
@@ -387,7 +394,7 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
 
   const sinMetas = (tipo === "ahorro" || tipo === "retiro") && metasActivas.length === 0;
   const sinCuentas = tipo === "transferencia" && cuentasActivas.length < 2;
-  const bloqueado = sinMetas || sinCuentas;
+  const bloqueado = sinMetas || sinCuentas || sinDiaPago;
 
   return (
     <form onSubmit={enviar} className="flex flex-col gap-4">
@@ -500,7 +507,7 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
           <div className="rounded-xl border border-borde-suave bg-fondo-alto p-3">
             <p className="flex items-center gap-2 text-[13px] text-tinta-2">
               <CreditCard className="size-4 shrink-0" aria-hidden="true" />
-              ¿Lo pagaste con tarjeta de crédito? Puedes dividirlo en cuotas.
+              ¿Lo pagaste con tarjeta de crédito? Se descuenta el día en que pagas la tarjeta y puedes dividirlo en cuotas.
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {tarjetas.map((t) => (
@@ -531,19 +538,22 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
             ayuda={resumenCuotas}
             error={error && monto && monto < nCuotas ? error : undefined}
           />
-          <Segmentado<"este" | "siguiente">
-            etiqueta="Primera cuota"
-            columnas="grid-cols-2"
-            valor={primera}
-            onCambio={setPrimeraElegida}
-            opciones={[
-              { valor: "este", etiqueta: "Este mes" },
-              { valor: "siguiente", etiqueta: "El mes siguiente" },
-            ]}
-          />
-          {diaPago === null && nCuotas > 1 ? (
-            <p className="text-[12.5px] leading-relaxed text-tinta-3">
-              Pon el día en que pagas {cuentaElegida?.nombre} (Ajustes → Cuentas) para que cada cuota caiga ese día.
+          {seCobraAlPagar && (
+            <Segmentado<"este" | "siguiente">
+              etiqueta={nCuotas > 1 ? "Primera cuota" : "Se cobra"}
+              columnas="grid-cols-2"
+              valor={primera}
+              onCambio={setPrimeraElegida}
+              opciones={[
+                { valor: "este", etiqueta: "Este mes" },
+                { valor: "siguiente", etiqueta: "El mes siguiente" },
+              ]}
+            />
+          )}
+          {sinDiaPago ? (
+            <p role="alert" className="text-[12.5px] leading-relaxed text-alerta">
+              {cuentaElegida?.nombre} no tiene día de pago. Ponlo en Ajustes → Cuentas (editar la tarjeta): sin él no se
+              sabe en qué mes se descuenta la compra.
             </p>
           ) : null}
           <div className="flex flex-wrap gap-2" role="group" aria-label="Cuotas frecuentes">
@@ -562,7 +572,7 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
         </div>
       )}
 
-      {conTarjeta && fechasCuotas.length > 0 && montosCuota.length > 0 ? (
+      {conTarjeta && nCuotas > 1 && fechasCuotas.length > 0 && montosCuota.length > 0 ? (
         <details className="rounded-xl border border-borde-suave bg-fondo-alto p-3 text-[13px] text-tinta-2">
           <summary className="cursor-pointer text-tinta">Ver cuándo paga cada cuota</summary>
           <ol className="mt-2 flex flex-col gap-1">

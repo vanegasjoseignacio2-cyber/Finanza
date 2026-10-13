@@ -218,6 +218,19 @@ export interface CuotaProxima {
   cantidad: number;
 }
 
+/** Cuándo toca pagar una tarjeta de crédito y cuánto: lo de sus compras y cuotas de ese mes. */
+export interface PagoTarjeta {
+  cuentaId: string;
+  nombre: string;
+  /** Día de pago (YYYY-MM-DD). */
+  fecha: string;
+  diasFaltantes: number;
+  /** Lo que se paga ese día (0 si no hay nada por pagar). */
+  monto: number;
+  /** Ya se transfirió a la tarjeta lo de este mes: lo que se muestra es el pago siguiente. */
+  pagada: boolean;
+}
+
 export interface Resumen {
   mes: string;
   hoy: string;
@@ -249,6 +262,8 @@ export interface Resumen {
   cuotasDelMes: number;
   /** Lo que se paga en cuotas de tarjeta los meses siguientes, mes por mes. */
   cuotasProximas: CuotaProxima[];
+  /** Próximo pago de cada tarjeta con día de pago, del más cercano al más lejano. */
+  pagosTarjeta: PagoTarjeta[];
   diasRestantes: number | null;
   /** Cuota de metas con fecha límite que falta apartar este mes. */
   cuotaMetasPendiente: number;

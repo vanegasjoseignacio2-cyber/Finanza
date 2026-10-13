@@ -14,16 +14,18 @@ import {
   type PortadaDoc,
   type RecordatorioDoc,
 } from "./db";
-import { diasDelMes, hoyISO, mesActual } from "./fechas";
+import { diasDelMes, hoyISO, mesActual, sumarMeses } from "./fechas";
 import {
   componerResumen,
   cuentaPrincipal,
   calendarioCuotas,
   HORA_AVISO_POR_DEFECTO,
+  primeraCuotaPorDefecto,
   repartirCuotas,
   sueldoPara,
   type FilaMensual,
   type SumaAgrupada,
+  type SumaTarjetaMes,
 } from "./finanzas";
 import type {
   CuotaProxima,
@@ -687,8 +689,25 @@ async function prepararMovimiento(
 
 export async function crearMovimiento(datos: DatosMovimiento): Promise<Movimiento> {
   const cuotas = datos.cuotas ?? 1;
-  const listo = await prepararMovimiento(datos);
-  if (cuotas > 1) return crearCompraEnCuotas(listo, cuotas, datos.primeraCuota === "siguiente" ? 1 : 0);
+  let listo = await prepararMovimiento(datos);
+  // Un gasto con tarjeta de crédito se descuenta cuando se paga la tarjeta, no el día
+  // de la compra: si el día de pago ya pasó, es el mes que viene. Un pago fijo no se
+  // mueve: se vincula al mes en que toca.
+  const tarjeta =
+    listo.tipo === "gasto" && !listo.recurrenteId
+      ? (await listarCuentas()).find((c) => c.id === listo.cuentaId && c.tipo === "tarjeta")
+      : undefined;
+  const mesesDespues: 0 | 1 =
+    datos.primeraCuota !== undefined
+      ? datos.primeraCuota === "siguiente"
+        ? 1
+        : 0
+      : primeraCuotaPorDefecto(listo.fecha, tarjeta?.diaPago ?? null);
+  if (cuotas > 1) return crearCompraEnCuotas(listo, cuotas, mesesDespues);
+  if (tarjeta?.diaPago) {
+    const [fecha] = calendarioCuotas(listo.fecha, 1, tarjeta.diaPago, mesesDespues);
+    listo = { ...listo, fecha, mes: fecha.slice(0, 7) };
+  }
   const doc: MovimientoDoc = { _id: new ObjectId(), ...listo, creadoEn: ahora() };
   await (await colecciones.movimientos()).insertOne(doc);
   return aMovimiento(doc, listo.cuentaId ?? "");
@@ -924,6 +943,32 @@ export async function cuotasProximas(mes: string, limite = 12): Promise<CuotaPro
   return filas.map((f) => ({ mes: f._id, total: f.total, cantidad: f.cantidad }));
 }
 
+/** Gastos y transferencias de este mes y el siguiente, por cuenta: de ahí sale el próximo pago de cada tarjeta. */
+export async function sumasTarjeta(hoy: string): Promise<SumaTarjetaMes[]> {
+  const mes = hoy.slice(0, 7);
+  const filas = await (await colecciones.movimientos())
+    .aggregate<{
+      _id: { tipo: TipoMovimiento; cuentaId: string | null; cuentaDestinoId: string | null; mes: string };
+      total: number;
+    }>([
+      { $match: { tipo: { $in: ["gasto", "transferencia"] }, mes: { $in: [mes, sumarMeses(mes, 1)] } } },
+      {
+        $group: {
+          _id: { tipo: "$tipo", cuentaId: "$cuentaId", cuentaDestinoId: "$cuentaDestinoId", mes: "$mes" },
+          total: { $sum: "$monto" },
+        },
+      },
+    ])
+    .toArray();
+  return filas.map((f) => ({
+    tipo: f._id.tipo,
+    cuentaId: f._id.cuentaId ?? null,
+    cuentaDestinoId: f._id.cuentaDestinoId ?? null,
+    mes: f._id.mes,
+    total: f.total,
+  }));
+}
+
 /**
  * Lo que el calendario dibuja además de los pagos fijos: todas las cuotas de
  * tarjeta (en el mes que caigan) y los gastos anotados con una fecha que aún no
@@ -954,7 +999,7 @@ export async function listarGastosAgendados(hoy = hoyISO()): Promise<GastoAgenda
 export async function calcularResumen(mes = mesActual()): Promise<Resumen> {
   const hoy = hoyISO();
   const mesReal = hoy.slice(0, 7);
-  const [ajustes, movimientosMes, movimientosMesReal, recordatorios, metas, cuentas, presupuestos, sumas, serie, proximas, catalogo] =
+  const [ajustes, movimientosMes, movimientosMesReal, recordatorios, metas, cuentas, presupuestos, sumas, serie, proximas, tarjetas, catalogo] =
     await Promise.all([
       ajustesPeticion(),
       listarMovimientos({ mes }),
@@ -966,6 +1011,7 @@ export async function calcularResumen(mes = mesActual()): Promise<Resumen> {
       sumasHistoricas(),
       serieMensual("2000-01", mes),
       cuotasProximas(mes),
+      sumasTarjeta(hoy),
       catalogoPeticion(),
     ]);
 
@@ -982,6 +1028,7 @@ export async function calcularResumen(mes = mesActual()): Promise<Resumen> {
     sumas,
     serie,
     cuotasProximas: proximas,
+    sumasTarjeta: tarjetas,
     catalogo,
   });
 }

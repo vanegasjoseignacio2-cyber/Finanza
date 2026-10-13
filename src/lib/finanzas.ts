@@ -22,6 +22,7 @@ import type {
   Meta,
   MetaCalculada,
   Movimiento,
+  PagoTarjeta,
   Presupuesto,
   PresupuestoCalculado,
   PuntoTendencia,
@@ -445,6 +446,8 @@ export interface EntradaResumen {
   serie: FilaMensual[];
   /** Cuotas de tarjeta de los meses que vienen. */
   cuotasProximas?: CuotaProxima[];
+  /** Gastos y transferencias de tarjetas de este mes y el siguiente, para su próximo pago. */
+  sumasTarjeta?: SumaTarjetaMes[];
   catalogo?: Catalogo;
 }
 
@@ -515,6 +518,7 @@ export function componerResumen(e: EntradaResumen): Resumen {
     totalDisponible: libre + anterior.total,
     cuotasDelMes: movs.filter((m) => m.tipo === "gasto" && m.cuota !== null).reduce((s, m) => s + m.monto, 0),
     cuotasProximas: e.cuotasProximas ?? [],
+    pagosTarjeta: calcularPagosTarjeta(e.cuentas, e.sumasTarjeta ?? [], e.hoy),
     diasRestantes,
     cuotaMetasPendiente,
     categorias: agruparPorCategoria(movs),
@@ -637,6 +641,63 @@ export function repartirCuotas(total: number, cuotas: number): number[] {
   const base = Math.floor(total / cuotas);
   const resto = total - base * cuotas;
   return Array.from({ length: cuotas }, (_, i) => (i === 0 ? base + resto : base));
+}
+
+/** Lo gastado en una tarjeta y lo transferido a ella, por mes, tal como sale de la base. */
+export interface SumaTarjetaMes {
+  tipo: TipoMovimiento;
+  cuentaId: string | null;
+  cuentaDestinoId: string | null;
+  mes: string;
+  total: number;
+}
+
+/**
+ * Próximo pago de cada tarjeta con día de pago: la fecha, cuántos días faltan y
+ * cuánto se paga (lo gastado en ella ese mes, incluidas las cuotas). Si el día de
+ * pago de este mes ya pasó, es el del mes que viene. Si ya se transfirió a la
+ * tarjeta al menos lo de este mes, se da por pagada y se muestra el siguiente.
+ */
+export function calcularPagosTarjeta(cuentas: Cuenta[], sumas: SumaTarjetaMes[], hoy: string): PagoTarjeta[] {
+  const mes = hoy.slice(0, 7);
+  const siguiente = sumarMeses(mes, 1);
+  const fechaDe = (m: string, dia: number) => `${m}-${String(Math.min(dia, diasDelMes(m))).padStart(2, "0")}`;
+  const total = (id: string, m: string, tipo: TipoMovimiento, destino = false) =>
+    sumas
+      .filter((s) => s.tipo === tipo && s.mes === m && (destino ? s.cuentaDestinoId : s.cuentaId) === id)
+      .reduce((a, s) => a + s.total, 0);
+
+  return cuentas
+    .filter((c) => c.tipo === "tarjeta" && !c.archivada && c.diaPago)
+    .map((c) => {
+      const dia = c.diaPago as number;
+      let objetivo = fechaDe(mes, dia) < hoy ? siguiente : mes;
+      let pagada = false;
+      if (objetivo === mes) {
+        const debido = total(c.id, mes, "gasto");
+        pagada = debido > 0 && total(c.id, mes, "transferencia", true) >= debido;
+        if (pagada) objetivo = siguiente;
+      }
+      const fecha = fechaDe(objetivo, dia);
+      return {
+        cuentaId: c.id,
+        nombre: c.nombre,
+        fecha,
+        diasFaltantes: diasEntre(hoy, fecha),
+        monto: total(c.id, objetivo, "gasto"),
+        pagada,
+      };
+    })
+    .sort((a, b) => a.diasFaltantes - b.diasFaltantes);
+}
+
+/**
+ * Cuándo se cobra la compra con tarjeta si no se elige a mano: este mes (0) si el
+ * día de pago todavía no pasó, el mes siguiente (1) si ya pasó. Una compra del 20
+ * con tarjeta que se paga el 5 se cobra el 5 del mes que viene, no este mes.
+ */
+export function primeraCuotaPorDefecto(fecha: string, diaPago: number | null): 0 | 1 {
+  return diaPago !== null && diaPago < Number(fecha.slice(8, 10)) ? 1 : 0;
 }
 
 /**

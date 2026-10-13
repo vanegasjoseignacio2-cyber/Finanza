@@ -8,6 +8,7 @@ import { ListaAlertas } from "@/components/paneles/alertas";
 import { Barra } from "@/components/paneles/barra";
 import { ListaMovimientos } from "@/components/paneles/lista-movimientos";
 import { ListaPagosFijos } from "@/components/paneles/pagos-fijos";
+import { ListaPagosTarjeta } from "@/components/paneles/pagos-tarjeta";
 import { CuotasTarjeta } from "@/components/paneles/cuotas-tarjeta";
 import { BannerProgramados } from "@/components/paneles/programados";
 import { Boton } from "@/components/ui/boton";
@@ -236,8 +237,14 @@ export function VistaHoy({ resumen: r }: { resumen: Resumen }) {
               {/* Al día: igual se ve cuánto falta para el próximo de cada uno. */}
               <ListaPagosFijos recordatorios={mensuales.filter((x) => x.activo)} limite={5} />
             </>
-          ) : (
+          ) : r.pagosTarjeta.length === 0 ? (
             <ListaPagosFijos recordatorios={[]} />
+          ) : null}
+          {r.pagosTarjeta.length > 0 && (
+            <div className={mensuales.length > 0 ? "mt-3 border-t border-borde-suave pt-3" : ""}>
+              <p className="text-[12px] font-semibold tracking-[0.1em] text-tinta-3 uppercase">Tarjetas de crédito</p>
+              <ListaPagosTarjeta pagos={r.pagosTarjeta} cuentas={r.cuentas} />
+            </div>
           )}
         </Tarjeta>
       </div>

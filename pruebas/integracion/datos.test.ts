@@ -561,6 +561,23 @@ describe("capa de datos contra MongoDB", { skip: omitir }, () => {
       assert.ok(todas.filter((f) => f === "2026-11-15").length === 2);
     });
 
+    it("una compra de una cuota con tarjeta se descuenta el día de pago, en su mes", async () => {
+      const t = await datos.crearCuenta({ nombre: "Nu", tipo: "tarjeta", saldoInicial: 0, cupo: null, diaPago: 5 });
+      // Compra del 13 y la tarjeta se paga el 5: cae el 5 del mes siguiente, no este mes.
+      const siguiente = await compra(t, { fecha: "2026-10-13", cuotas: 1 });
+      assert.equal(siguiente.fecha, "2026-11-05");
+      assert.equal(siguiente.mes, "2026-11");
+      assert.equal(siguiente.cuota, null);
+      // Si el día de pago todavía no llega, cae este mes.
+      const tarde = await datos.crearCuenta({ nombre: "Visa 2", tipo: "tarjeta", saldoInicial: 0, cupo: null, diaPago: 20 });
+      assert.equal((await compra(tarde, { fecha: "2026-10-13", cuotas: 1 })).fecha, "2026-10-20");
+      // Elegir a mano el otro mes se respeta.
+      assert.equal((await compra(tarde, { fecha: "2026-10-13", cuotas: 1, primeraCuota: "siguiente" })).fecha, "2026-11-20");
+      // Lo de octubre no ve la compra que se paga en noviembre.
+      const r = await datos.calcularResumen("2026-10");
+      assert.equal(r.gastado, 100_000);
+    });
+
     it("el día de pago solo se guarda en una tarjeta", async () => {
       const banco = await datos.crearCuenta({ nombre: "Banco", tipo: "corriente", saldoInicial: 0, diaPago: null });
       assert.equal(banco.diaPago, null);

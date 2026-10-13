@@ -8,6 +8,8 @@ import {
   calcularSaldos,
   calcularSobranteAnterior,
   calendarioCuotas,
+  calcularPagosTarjeta,
+  primeraCuotaPorDefecto,
   calcularTendencia,
   componerResumen,
   esHoraDelAviso,
@@ -640,7 +642,48 @@ describe("sobrante de meses anteriores y total disponible", () => {
   });
 });
 
+describe("próximo pago de la tarjeta", () => {
+  const nu = cuenta({ id: "nu", nombre: "Nu", tipo: "tarjeta", diaPago: 7 });
+  const gasto = (mes: string, total: number) => ({ tipo: "gasto" as const, cuentaId: "nu", cuentaDestinoId: null, mes, total });
+
+  it("antes del día de pago, es este mes con lo gastado en él", () => {
+    const [p] = calcularPagosTarjeta([nu], [gasto("2026-10", 80_000), gasto("2026-11", 50_000)], "2026-10-03");
+    assert.deepEqual(
+      { fecha: p.fecha, dias: p.diasFaltantes, monto: p.monto, pagada: p.pagada },
+      { fecha: "2026-10-07", dias: 4, monto: 80_000, pagada: false },
+    );
+  });
+
+  it("si el día de pago ya pasó, es el del mes que viene", () => {
+    const [p] = calcularPagosTarjeta([nu], [gasto("2026-10", 80_000), gasto("2026-11", 50_000)], "2026-10-13");
+    assert.deepEqual({ fecha: p.fecha, dias: p.diasFaltantes, monto: p.monto }, { fecha: "2026-11-07", dias: 25, monto: 50_000 });
+  });
+
+  it("con lo de este mes ya transferido a la tarjeta, muestra el siguiente como pagada", () => {
+    const pago = { tipo: "transferencia" as const, cuentaId: "banco", cuentaDestinoId: "nu", mes: "2026-10", total: 80_000 };
+    const [p] = calcularPagosTarjeta([nu], [gasto("2026-10", 80_000), gasto("2026-11", 50_000), pago], "2026-10-03");
+    assert.equal(p.pagada, true);
+    assert.equal(p.fecha, "2026-11-07");
+    assert.equal(p.monto, 50_000);
+  });
+
+  it("ignora tarjetas sin día de pago, archivadas y cuentas que no son tarjeta", () => {
+    const sinDia = cuenta({ id: "x", tipo: "tarjeta", diaPago: null });
+    const archivada = cuenta({ id: "y", tipo: "tarjeta", diaPago: 5, archivada: true });
+    const banco = cuenta({ id: "z", tipo: "corriente" });
+    assert.deepEqual(calcularPagosTarjeta([sinDia, archivada, banco], [], "2026-10-03"), []);
+  });
+});
+
 describe("calendario de las cuotas", () => {
+  it("la compra se cobra el mes siguiente si el día de pago de este mes ya pasó", () => {
+    assert.equal(primeraCuotaPorDefecto("2026-10-13", 5), 1);
+    assert.equal(primeraCuotaPorDefecto("2026-10-13", 13), 0, "el mismo día de pago aún cuenta este mes");
+    assert.equal(primeraCuotaPorDefecto("2026-10-13", 20), 0);
+    assert.equal(primeraCuotaPorDefecto("2026-10-13", null), 0);
+    assert.deepEqual(calendarioCuotas("2026-10-13", 1, 5, primeraCuotaPorDefecto("2026-10-13", 5)), ["2026-11-05"]);
+  });
+
   it("sin día de pago, cada cuota cae el día de la compra", () => {
     assert.deepEqual(calendarioCuotas("2026-10-08", 3, null), ["2026-10-08", "2026-11-08", "2026-12-08"]);
   });

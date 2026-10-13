@@ -12,7 +12,7 @@ import { Segmentado } from "@/components/ui/segmentado";
 import { peticion } from "@/lib/cliente";
 import { pesos } from "@/lib/dinero";
 import { fechaCorta, hoyISO } from "@/lib/fechas";
-import { calendarioCuotas, repartirCuotas } from "@/lib/finanzas";
+import { calendarioCuotas, primeraCuotaPorDefecto, repartirCuotas } from "@/lib/finanzas";
 import type { CuentaConSaldo, TipoCuenta } from "@/lib/types";
 
 /** Ejecuta una petición, avisa y refresca los datos del servidor. */
@@ -78,8 +78,7 @@ export function FormularioCuenta({
   const diaPagoNum = diaPago !== "" && Number(diaPago) >= 1 && Number(diaPago) <= 31 ? Number(diaPago) : null;
   const conCuotas = esTarjeta && !cuenta;
   const nCuotas = conCuotas ? Math.min(60, Math.max(0, Math.floor(Number(cuotasTexto)) || 0)) : 0;
-  const primeraPorDefecto: "este" | "siguiente" =
-    diaPagoNum !== null && diaPagoNum < Number(hoy.slice(8, 10)) ? "siguiente" : "este";
+  const primeraPorDefecto: "este" | "siguiente" = primeraCuotaPorDefecto(hoy, diaPagoNum) === 1 ? "siguiente" : "este";
   const primera = primeraElegida ?? primeraPorDefecto;
   const alcanza = deuda !== null && deuda >= nCuotas;
   const montos = nCuotas >= 1 && deuda && alcanza ? repartirCuotas(deuda, nCuotas) : [];
@@ -98,6 +97,9 @@ export function FormularioCuenta({
 
   async function guardar(evento: FormEvent) {
     evento.preventDefault();
+    if (esTarjeta && diaPagoNum === null) {
+      return void avisos.error("Escribe el día del mes (1 a 31) en que pagas la tarjeta.");
+    }
     if (conCuotas && nCuotas >= 1) {
       if (!deuda) return void avisos.error("Escribe lo que debes para poder dividirlo en cuotas.");
       if (!alcanza) return void avisos.error("Lo que debes tiene que alcanzar para al menos $1 por cuota.");
@@ -113,7 +115,7 @@ export function FormularioCuenta({
             tipo,
             saldoInicial: esTarjeta ? -(deuda ?? 0) : (saldoInicial ?? 0),
             cupo: esTarjeta ? cupo : null,
-            diaPago: esTarjeta && diaPago !== "" ? Number(diaPago) : null,
+            diaPago: esTarjeta ? diaPagoNum : null,
             ...(conDeuda ? { deudaCuotas: nCuotas, primeraCuota: primera } : {}),
           }),
         }),
@@ -146,7 +148,7 @@ export function FormularioCuenta({
             ayuda="Con él la app te dice cuánto te queda disponible."
           />
           <Campo
-            etiqueta="Día en que pagas la tarjeta (opcional)"
+            etiqueta="Día en que pagas la tarjeta"
             type="number"
             inputMode="numeric"
             min={1}
@@ -154,16 +156,35 @@ export function FormularioCuenta({
             value={diaPago}
             onChange={(e) => setDiaPago(e.target.value)}
             placeholder="Ej. 15"
-            ayuda="Cada cuota de tus compras caerá ese día del mes."
+            required
+            ayuda="Obligatorio. Cada compra se descuenta de lo libre del mes en que pagas la tarjeta: si ese día ya pasó, de la del mes siguiente."
           />
+          {cuenta?.tipo === "tarjeta" && (
+            <dl className="grid grid-cols-2 gap-3 rounded-xl border border-borde-suave bg-fondo-alto p-3 text-[13px]">
+              <div>
+                <dt className="text-tinta-3">Debes ahora</dt>
+                <dd className="mt-0.5 text-[15px] font-semibold tabular text-tinta">
+                  {cuenta.saldo < 0 ? pesos(-cuenta.saldo) : pesos(0)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-tinta-3">Disponible</dt>
+                <dd className="mt-0.5 text-[15px] font-semibold tabular text-tinta">
+                  {cupo ? pesos(Math.max(0, cupo + cuenta.saldo)) : "Sin cupo definido"}
+                </dd>
+              </div>
+            </dl>
+          )}
           <CampoDinero
-            etiqueta="Lo que ya debes hoy (opcional)"
+            etiqueta={cuenta ? "Deuda anterior a la app (opcional)" : "Lo que ya debes hoy (opcional)"}
             valor={deuda}
             onCambio={setDeuda}
             ayuda={
               conCuotas
                 ? "Lo que debes ahora en la tarjeta. Abajo puedes dividirlo en cuotas."
-                : "Saldo pendiente antes de empezar a registrar en la app."
+                : cuenta
+                  ? "Lo que ya debías antes de empezar a registrar en la app. Las compras que registraste se suman aparte, en lo que debes ahora."
+                  : "Saldo pendiente antes de empezar a registrar en la app."
             }
           />
 

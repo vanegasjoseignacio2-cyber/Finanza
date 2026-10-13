@@ -15,6 +15,7 @@ import {
   comoTexto,
   comoTipo,
   comoTipoCuenta,
+  ErrorValidacion,
 } from "./validacion";
 
 export function datosMovimiento(c: Record<string, unknown>): DatosMovimiento {
@@ -29,7 +30,9 @@ export function datosMovimiento(c: Record<string, unknown>): DatosMovimiento {
     metaId: comoIdOpcional(c.metaId),
     recurrenteId: comoIdOpcional(c.recurrenteId),
     cuotas: comoCuotas(c.cuotas),
-    primeraCuota: c.primeraCuota === "siguiente" ? ("siguiente" as const) : ("este" as const),
+    // Sin elección explícita, el servidor decide según el día de pago de la tarjeta.
+    primeraCuota:
+      c.primeraCuota === "siguiente" || c.primeraCuota === "este" ? (c.primeraCuota as "este" | "siguiente") : undefined,
   };
 }
 
@@ -57,6 +60,13 @@ export function datosMeta(c: Record<string, unknown>) {
   };
 }
 
+function diaPagoTarjeta(valor: unknown): number {
+  if (valor === undefined || valor === null || valor === "") {
+    throw new ErrorValidacion("Escribe el día del mes en que pagas la tarjeta.");
+  }
+  return comoDia(valor);
+}
+
 export function datosCuenta(c: Record<string, unknown>) {
   const tipo = comoTipoCuenta(c.tipo);
   const vacio = c.cupo === undefined || c.cupo === null || c.cupo === "";
@@ -66,11 +76,9 @@ export function datosCuenta(c: Record<string, unknown>) {
     saldoInicial: Math.round(Number(c.saldoInicial ?? 0)) || 0,
     // El cupo solo tiene sentido en una tarjeta de crédito.
     cupo: tipo === "tarjeta" && !vacio ? comoMonto(c.cupo, "cupo", true) || null : null,
-    // El día de pago solo tiene sentido en una tarjeta de crédito.
-    diaPago:
-      tipo === "tarjeta" && c.diaPago !== undefined && c.diaPago !== null && c.diaPago !== ""
-        ? comoDia(c.diaPago)
-        : null,
+    // El día de pago solo tiene sentido en una tarjeta de crédito, y ahí es obligatorio:
+    // de él depende en qué mes se descuenta cada compra.
+    diaPago: tipo === "tarjeta" ? diaPagoTarjeta(c.diaPago) : null,
   };
 }
 

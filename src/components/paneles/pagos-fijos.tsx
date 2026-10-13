@@ -70,7 +70,13 @@ export function textoFalta(dias: number): string {
 }
 
 /** Cuenta regresiva grande: cuántos días faltan, en el color de la urgencia. */
-export function Regresiva({ r, grande = false }: { r: RecordatorioCalculado; grande?: boolean }) {
+export function Regresiva({
+  r,
+  grande = false,
+}: {
+  r: Pick<RecordatorioCalculado, "diasFaltantes" | "pagado">;
+  grande?: boolean;
+}) {
   const d = r.diasFaltantes;
   const tono = r.pagado
     ? "border-verde/30 text-verde"

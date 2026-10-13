@@ -222,7 +222,7 @@ export function SeccionCuentas({ cuentas }: { cuentas: CuentaConSaldo[] }) {
               <p className="truncate text-[14.5px] text-tinta">{c.nombre}</p>
               <p className="text-[12.5px] text-tinta-3">
                 {TIPOS_CUENTA.find((t) => t.valor === c.tipo)?.etiqueta}
-                {c.tipo === "tarjeta" && c.diaPago ? ` · paga el día ${c.diaPago}` : ""}
+                {c.tipo === "tarjeta" ? (c.diaPago ? ` · paga el día ${c.diaPago}` : " · falta el día de pago") : ""}
                 {c.tipo === "tarjeta"
                   ? c.cupo
                     ? ` · cupo ${pesos(c.cupo)} · disponible ${pesos(Math.max(0, c.cupo + c.saldo))}`
