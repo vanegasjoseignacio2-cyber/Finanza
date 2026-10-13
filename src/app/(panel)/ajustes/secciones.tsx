@@ -111,7 +111,7 @@ export function SeccionSueldo({ sueldos, diaSueldo }: { sueldos: TramoSueldo[]; 
         {vigente > 0 && <span className="ml-2 text-[14px] font-normal text-tinta-3">al mes</span>}
       </p>
 
-      <form onSubmit={guardar} className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+      <form onSubmit={guardar} className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
         <CampoDinero etiqueta="Sueldo mensual" valor={monto} onCambio={setMonto} error={error || undefined} />
         <Campo
           etiqueta="Desde"
@@ -126,7 +126,7 @@ export function SeccionSueldo({ sueldos, diaSueldo }: { sueldos: TramoSueldo[]; 
         </Boton>
       </form>
 
-      <form onSubmit={guardarDia} className="mt-5 grid grid-cols-1 gap-3 border-t border-borde-suave pt-4 sm:grid-cols-[1fr_auto] sm:items-end">
+      <form onSubmit={guardarDia} className="mt-5 grid grid-cols-1 gap-3 border-t border-borde-suave pt-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
         <Campo
           etiqueta="Día del mes en que te llega"
           type="number"

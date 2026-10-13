@@ -31,7 +31,9 @@ function Envuelto({ etiqueta, ayuda, error, obligatorio, children }: Envoltura) 
   const descritoPor = [idError, idAyuda].filter(Boolean).join(" ") || undefined;
 
   return (
-    <div className="flex flex-col gap-1.5">
+    // min-w-0: como hijo de una grilla o flex, un campo no puede ser más ancho que su
+    // columna aunque el navegador (iOS con fecha/mes) le dé un ancho propio.
+    <div className="flex min-w-0 flex-col gap-1.5">
       <label htmlFor={id} className="text-[13px] font-medium text-tinta-2">
         {etiqueta}
         {obligatorio && (
@@ -65,7 +67,7 @@ export function Campo({ etiqueta, ayuda, error, prefijo, className = "", ...prop
   return (
     <Envuelto etiqueta={etiqueta} ayuda={ayuda} error={error} obligatorio={props.required}>
       {(id, descritoPor) => (
-        <div className="relative">
+        <div className="relative min-w-0">
           {prefijo && (
             <span
               className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-[15px] text-tinta-3"

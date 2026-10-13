@@ -37,6 +37,10 @@ export const viewport: Viewport = {
   colorScheme: "dark",
   width: "device-width",
   initialScale: 1,
+  // Sin zoom (ni el automático al enfocar un campo ni el de pellizco): en la PWA del
+  // iPhone se quedaba ampliada al cerrar el modal y tapaba el menú.
+  maximumScale: 1,
+  userScalable: false,
   // Sin viewport-fit=cover: Safari deja sus barras fuera de la página. Con él, la
   // barra flotante del iPhone tapaba el menú de abajo.
 };

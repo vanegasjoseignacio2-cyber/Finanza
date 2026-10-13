@@ -13,6 +13,7 @@ import {
   type ReactNode,
 } from "react";
 import { useDatos } from "@/components/datos-panel";
+import { DetalleMovimiento } from "@/components/detalle-movimiento";
 import { useAvisos } from "@/components/ui/avisos";
 import { Boton } from "@/components/ui/boton";
 import { Confirmar } from "@/components/ui/confirmar";
@@ -22,7 +23,7 @@ import { Modal } from "@/components/ui/modal";
 import { Segmentado, type Opcion } from "@/components/ui/segmentado";
 import { peticion } from "@/lib/cliente";
 import { pesos } from "@/lib/dinero";
-import { fechaCorta, hoyISO, nombreMes } from "@/lib/fechas";
+import { fechaCorta, fechaLarga, hoyISO, nombreMes } from "@/lib/fechas";
 import { calendarioCuotas, repartirCuotas } from "@/lib/finanzas";
 import type { Movimiento, TipoMovimiento } from "@/lib/types";
 
@@ -46,6 +47,8 @@ export interface Borrador {
 
 interface Captura {
   abrir: (borrador?: Borrador) => void;
+  /** Muestra la ficha del movimiento; desde ahí se puede editar (con confirmación) o repetir. */
+  ver: (movimiento: Movimiento) => void;
   editar: (movimiento: Movimiento) => void;
   repetir: (movimiento: Movimiento) => void;
 }
@@ -86,23 +89,51 @@ export function ProveedorCaptura({ children }: { children: ReactNode }) {
     vuelta: 0,
   });
 
+  // El movimiento que se está viendo se conserva al cerrar, para que el modal no se
+  // vacíe mientras se anima su salida.
+  const [detalle, setDetalle] = useState<{ movimiento: Movimiento | null; abierto: boolean }>({
+    movimiento: null,
+    abierto: false,
+  });
+
   const abrir = useCallback((borrador: Borrador = {}) => {
     setEstado((e) => ({ abierto: true, borrador, vuelta: e.vuelta + 1 }));
   }, []);
 
+  const repetir = useCallback(
+    (m: Movimiento) =>
+      abrir({ ...m, id: undefined, fecha: hoyISO(), recurrenteId: null, compraId: null, cuota: null, cuotas: null }),
+    [abrir],
+  );
+
   const valor = useMemo<Captura>(
     () => ({
       abrir,
+      ver: (m) => setDetalle({ movimiento: m, abierto: true }),
       editar: (m) => abrir({ ...m }),
-      repetir: (m) =>
-        abrir({ ...m, id: undefined, fecha: hoyISO(), recurrenteId: null, compraId: null, cuota: null, cuotas: null }),
+      repetir,
     }),
-    [abrir],
+    [abrir, repetir],
   );
+
+  const cerrarDetalle = () => setDetalle((d) => ({ ...d, abierto: false }));
 
   return (
     <Contexto.Provider value={valor}>
       {children}
+      <DetalleMovimiento
+        movimiento={detalle.movimiento}
+        abierto={detalle.abierto}
+        onCerrar={cerrarDetalle}
+        onEditar={() => {
+          cerrarDetalle();
+          if (detalle.movimiento) abrir({ ...detalle.movimiento });
+        }}
+        onRepetir={() => {
+          cerrarDetalle();
+          if (detalle.movimiento) repetir(detalle.movimiento);
+        }}
+      />
       <Modal
         abierto={estado.abierto}
         onCerrar={() => setEstado((e) => ({ ...e, abierto: false }))}
@@ -207,6 +238,7 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [confirmandoBorrado, setConfirmandoBorrado] = useState(false);
+  const [confirmandoGuardado, setConfirmandoGuardado] = useState(false);
 
   // Si al cambiar de tipo la categoría deja de valer, se toma la primera válida.
   const categoriasDelTipo = tipo === "ingreso" ? catalogo.ingreso : catalogo.gasto;
@@ -267,6 +299,18 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
       setError("El monto debe alcanzar para al menos $1 por cuota.");
       return;
     }
+    // Al editar, antes de guardar se muestra qué va a cambiar.
+    if (editando) {
+      setError("");
+      setConfirmandoGuardado(true);
+      return;
+    }
+    await guardar();
+  }
+
+  async function guardar() {
+    if (!monto) return;
+    setConfirmandoGuardado(false);
     setGuardando(true);
     setError("");
     const cuerpo = {
@@ -315,6 +359,30 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
       setError(e instanceof Error ? e.message : "No pudimos eliminar el movimiento.");
       setGuardando(false);
     }
+  }
+
+  // Qué cambió respecto al movimiento original (solo los datos que aplican al tipo elegido).
+  const cambios: { campo: string; antes: string; ahora: string }[] = [];
+  if (editando) {
+    const nombreCuenta = (id: string | null | undefined) => cuentas.find((c) => c.id === id)?.nombre ?? "—";
+    const nombreMeta = (id: string | null | undefined) => metas.find((m) => m.id === id)?.nombre ?? "—";
+    const nombrePagoFijo = (id: string | null | undefined) =>
+      id ? (pendientes.find((r) => r.id === id)?.titulo ?? "Pago fijo") : "Ninguno";
+    const nombreTipo = (t: TipoMovimiento | undefined) => TIPOS.find((x) => x.valor === t)?.etiqueta ?? "—";
+    const comparar = (campo: string, antes: string, ahora: string) => {
+      if (antes !== ahora) cambios.push({ campo, antes, ahora });
+    };
+    comparar("Tipo", nombreTipo(borrador.tipo), nombreTipo(tipo));
+    if (tipo === "gasto" || tipo === "ingreso") {
+      comparar("Categoría", catalogo.obtener(borrador.categoria ?? "").label, catalogo.obtener(categoriaEfectiva).label);
+    }
+    if (tipo === "ahorro" || tipo === "retiro") comparar("Meta", nombreMeta(borrador.metaId), nombreMeta(metaId));
+    comparar("Monto", pesos(borrador.monto ?? 0), pesos(monto ?? 0));
+    comparar("Fecha", borrador.fecha ? fechaLarga(borrador.fecha) : "—", /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? fechaLarga(fecha) : fecha);
+    comparar(tipo === "transferencia" ? "Desde" : "Cuenta", nombreCuenta(borrador.cuentaId), nombreCuenta(cuentaId));
+    if (tipo === "transferencia") comparar("Hacia", nombreCuenta(borrador.cuentaDestinoId), nombreCuenta(cuentaDestinoId));
+    if (tipo === "gasto") comparar("Pago fijo", nombrePagoFijo(borrador.recurrenteId), nombrePagoFijo(recurrenteId || null));
+    comparar("Nota", borrador.nota || "Sin nota", nota || "Sin nota");
   }
 
   const sinMetas = (tipo === "ahorro" || tipo === "retiro") && metasActivas.length === 0;
@@ -577,6 +645,47 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
           {editando ? "Guardar cambios" : "Guardar"}
         </Boton>
       </div>
+
+      {editando && (
+        <Modal
+          abierto={confirmandoGuardado}
+          titulo="¿Guardar los cambios?"
+          descripcion={
+            cambios.length > 0
+              ? "Esto es lo que va a cambiar. Las cifras se recalculan al guardar."
+              : "No cambiaste ningún dato de este movimiento."
+          }
+          onCerrar={() => (guardando ? undefined : setConfirmandoGuardado(false))}
+        >
+          {cambios.length > 0 && (
+            <dl className="mb-4 flex flex-col rounded-xl border border-borde-suave bg-fondo-alto px-3.5">
+              {cambios.map((c) => (
+                <div key={c.campo} className="border-b border-borde-suave py-2.5 last:border-b-0">
+                  <dt className="text-[12.5px] text-tinta-3">{c.campo}</dt>
+                  <dd className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-[14.5px] break-words">
+                    <span className="text-tinta-3 line-through">{c.antes}</span>
+                    <span aria-hidden="true" className="text-tinta-3">
+                      →
+                    </span>
+                    <span className="sr-only">cambia a</span>
+                    <span className="font-medium text-tinta">{c.ahora}</span>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          )}
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Boton type="button" variante="fantasma" disabled={guardando} onClick={() => setConfirmandoGuardado(false)}>
+              {cambios.length > 0 ? "Seguir editando" : "Volver"}
+            </Boton>
+            {cambios.length > 0 && (
+              <Boton type="button" cargando={guardando} onClick={guardar}>
+                Confirmar y guardar
+              </Boton>
+            )}
+          </div>
+        </Modal>
+      )}
 
       {borrador.compraId && borrador.cuotas ? (
         <Modal

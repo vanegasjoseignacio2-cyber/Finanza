@@ -3,48 +3,13 @@
 import { CreditCard, Link2, Repeat } from "lucide-react";
 import { useCaptura } from "@/components/captura";
 import { useDatos } from "@/components/datos-panel";
+import { COLOR_MOVIMIENTO, SIGNO_MOVIMIENTO, useDescribir } from "@/components/describir-movimiento";
 import { Icono } from "@/components/iconos";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Vacio } from "@/components/ui/tarjeta";
 import { pesos } from "@/lib/dinero";
 import { DIAS_SEMANA, fechaCorta } from "@/lib/fechas";
 import type { Movimiento } from "@/lib/types";
-
-const COLOR: Record<Movimiento["tipo"], string> = {
-  gasto: "text-tinta",
-  ingreso: "text-verde",
-  ahorro: "text-tinta-2",
-  retiro: "text-tinta-2",
-  transferencia: "text-tinta-2",
-};
-
-const SIGNO: Record<Movimiento["tipo"], string> = {
-  gasto: "− ",
-  ingreso: "+ ",
-  ahorro: "",
-  retiro: "",
-  transferencia: "",
-};
-
-function useDescribir() {
-  const { catalogo, cuentas, metas } = useDatos();
-  const cuenta = (id: string | null) => cuentas.find((c) => c.id === id)?.nombre ?? "otra cuenta";
-  const meta = (id: string | null) => metas.find((m) => m.id === id)?.nombre ?? "una meta";
-  return (m: Movimiento) => {
-    switch (m.tipo) {
-      case "ahorro":
-        return { titulo: `Aporte a ${meta(m.metaId)}`, icono: "PiggyBank" };
-      case "retiro":
-        return { titulo: `Retiro de ${meta(m.metaId)}`, icono: "ArrowDownToLine" };
-      case "transferencia":
-        return { titulo: `${cuenta(m.cuentaId)} → ${cuenta(m.cuentaDestinoId)}`, icono: "ArrowLeftRight" };
-      default: {
-        const c = catalogo.obtener(m.categoria);
-        return { titulo: c.label, icono: c.icono };
-      }
-    }
-  };
-}
 
 function Fila({ m, conFecha }: { m: Movimiento; conFecha: boolean }) {
   const captura = useCaptura();
@@ -63,8 +28,8 @@ function Fila({ m, conFecha }: { m: Movimiento; conFecha: boolean }) {
     <li className="flex items-center gap-1 border-b border-borde-suave last:border-b-0">
       <button
         type="button"
-        onClick={() => captura.editar(m)}
-        aria-label={`Editar: ${d.titulo}, ${pesos(m.monto)}, ${fechaCorta(m.fecha)}`}
+        onClick={() => captura.ver(m)}
+        aria-label={`Ver detalle:${d.titulo}, ${pesos(m.monto)}, ${fechaCorta(m.fecha)}`}
         className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg py-3 pr-1 text-left transition-colors hover:bg-superficie-alta/40"
       >
         <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-superficie-alta text-tinta-2">
@@ -95,8 +60,8 @@ function Fila({ m, conFecha }: { m: Movimiento; conFecha: boolean }) {
             <span className="block truncate text-[12.5px] text-tinta-3">{detalle.join(" · ")}</span>
           )}
         </span>
-        <span className={`shrink-0 text-[14.5px] font-semibold tabular ${COLOR[m.tipo]}`}>
-          {SIGNO[m.tipo]}
+        <span className={`shrink-0 text-[14.5px] font-semibold tabular ${COLOR_MOVIMIENTO[m.tipo]}`}>
+          {SIGNO_MOVIMIENTO[m.tipo]}
           {pesos(m.monto)}
         </span>
       </button>

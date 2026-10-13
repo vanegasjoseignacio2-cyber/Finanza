@@ -29,7 +29,7 @@ export function CampoDinero({
   const mostrado = valor === null ? "" : valor.toLocaleString("es-CO");
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex min-w-0 flex-col gap-1.5">
       <label htmlFor={id} className="text-[13px] font-medium text-tinta-2">
         {etiqueta}
         {requerido && (
