@@ -3,6 +3,9 @@
 import { AnimatePresence, motion } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
 
+// Fondo de la opción elegida: blanco que baja a un gris medio hacia la esquina inferior derecha.
+const FONDO_ACTIVO = "bg-[linear-gradient(135deg,#ffffff_0%,#9ca3af_100%)]";
+
 export interface Opcion<T extends string> {
   valor: T;
   etiqueta: string;
@@ -77,7 +80,7 @@ export function Segmentado<T extends string>({
                     animate={{ clipPath: "circle(75% at 50% 50%)" }}
                     exit={{ opacity: 0, transition: { duration: 0.15 } }}
                     transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-                    className="absolute inset-0 rounded-lg bg-acento"
+                    className={`absolute inset-0 rounded-lg ${FONDO_ACTIVO}`}
                   />
                 )}
               </AnimatePresence>
