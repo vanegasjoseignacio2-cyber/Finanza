@@ -8,6 +8,7 @@ import { pesos } from "./dinero";
 import {
   diasDelMes,
   diasEntre,
+  fechaDeInstante,
   mesCorto,
   mesesEntre,
   proximoVencimiento,
@@ -306,6 +307,19 @@ export function cuentaPrincipal(cuentas: Cuenta[]): Cuenta | undefined {
 }
 
 /**
+ * Lo que ya tenías al abrir cada cuenta de banco o efectivo (su saldo inicial), con
+ * el mes en que se creó. Es plata para gastar que no viene de ningún movimiento, así
+ * que hay que sumarla aparte (lo que gastas o recibes en esas cuentas ya cuenta en
+ * el mes). No entran las tarjetas (su saldo es deuda), las cuentas de ahorro (plata
+ * apartada) ni las archivadas.
+ */
+export function saldosInicialesParaGastar(cuentas: Cuenta[]): { mes: string; monto: number }[] {
+  return cuentas
+    .filter((c) => !c.archivada && (c.tipo === "corriente" || c.tipo === "efectivo") && c.saldoInicial !== 0)
+    .map((c) => ({ mes: fechaDeInstante(c.creadoEn).slice(0, 7), monto: c.saldoInicial }));
+}
+
+/**
  * Cuenta de destino de una transferencia desde `origenId`. Respeta la elegida si
  * existe y no es la de origen (no se puede transferir de una cuenta a sí misma);
  * si no, toma la primera otra cuenta. Es "" cuando no hay otra.
@@ -510,7 +524,15 @@ export function componerResumen(e: EntradaResumen): Resumen {
   const fijosPendientes = fijosPendientesLista.reduce((s, r) => s + r.montoEstimado, 0);
   const fijosSinMonto = fijosPendientesLista.filter((r) => r.montoEstimado <= 0).length;
 
-  const libre = ingresoTotal - gastado - ahorroNeto - fijosPendientes;
+  // Lo que ya tenías en tus cuentas cuenta como ingreso del mes en que las creas; los
+  // meses siguientes pasa a lo que sobró de los anteriores.
+  const saldosIniciales = saldosInicialesParaGastar(e.cuentas);
+  const sumarSaldos = (cuando: (mesCuenta: string) => boolean) =>
+    saldosIniciales.filter((s) => cuando(s.mes)).reduce((total, s) => total + s.monto, 0);
+  const saldoInicialDelMes = sumarSaldos((m) => m === e.mes);
+  const saldoInicialAnterior = sumarSaldos((m) => m < e.mes);
+
+  const libre = ingresoTotal + saldoInicialDelMes - gastado - ahorroNeto - fijosPendientes;
 
   const diasRestantes =
     momento === "actual"
@@ -537,10 +559,12 @@ export function componerResumen(e: EntradaResumen): Resumen {
     fijosPendientes,
     fijosPendientesLista,
     fijosSinMonto,
+    saldoInicialDelMes,
     libre,
-    sobranteAnterior: anterior.total,
+    sobranteAnterior: anterior.total + saldoInicialAnterior,
+    saldoInicialAnterior,
     mesesAnteriores: anterior.meses,
-    totalDisponible: libre + anterior.total,
+    totalDisponible: libre + anterior.total + saldoInicialAnterior,
     cuotasDelMes: movs.filter((m) => m.tipo === "gasto" && m.cuota !== null).reduce((s, m) => s + m.monto, 0),
     cuotasProximas: e.cuotasProximas ?? [],
     pagosTarjeta: calcularPagosTarjeta(e.cuentas, e.sumasTarjeta ?? [], e.hoy),

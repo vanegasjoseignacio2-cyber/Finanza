@@ -22,6 +22,22 @@ export function hoyISO(): string {
   }).format(new Date());
 }
 
+/**
+ * Fecha (YYYY-MM-DD) en la zona horaria de la app de un instante ISO, p. ej. el
+ * momento en que se creó algo: pasada la tarde del último día del mes en Colombia,
+ * en UTC ya es el mes siguiente.
+ */
+export function fechaDeInstante(iso: string): string {
+  const instante = new Date(iso);
+  if (Number.isNaN(instante.getTime())) return iso.slice(0, 10);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: ZONA,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(instante);
+}
+
 /** Hora del día (0-23) en la zona horaria de la app. */
 export function horaActual(ahora = new Date()): number {
   const hora = new Intl.DateTimeFormat("en-GB", { timeZone: ZONA, hour: "2-digit", hourCycle: "h23" }).format(ahora);

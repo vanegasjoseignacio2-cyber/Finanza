@@ -250,10 +250,17 @@ export interface Resumen {
   fijosPendientesLista: RecordatorioCalculado[];
   fijosSinMonto: number;
 
-  /** Lo que de verdad queda para gastar: ingreso − gastado − ahorro − fijos pendientes. */
+  /**
+   * Lo que ya tenías en tus cuentas de banco y efectivo creadas este mes (su saldo
+   * inicial): es plata para gastar, así que suma a lo libre del mes en que se crean.
+   */
+  saldoInicialDelMes: number;
+  /** Lo que de verdad queda para gastar: ingreso + saldo inicial de cuentas nuevas − gastado − ahorro − fijos pendientes. */
   libre: number;
-  /** Lo que sobró (o faltó) sumando los meses anteriores a este. */
+  /** Lo que sobró (o faltó) sumando los meses anteriores a este, más el saldo inicial de cuentas creadas antes. */
   sobranteAnterior: number;
+  /** De `sobranteAnterior`, lo que viene del saldo inicial de cuentas creadas en meses anteriores. */
+  saldoInicialAnterior: number;
   /** Cuántos meses anteriores entran en `sobranteAnterior` (0 en el primer mes de uso). */
   mesesAnteriores: number;
   /** Libre de este mes más lo que sobró antes. */

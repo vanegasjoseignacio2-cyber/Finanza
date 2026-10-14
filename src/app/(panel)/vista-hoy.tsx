@@ -68,7 +68,9 @@ function PrimerosPasos({ r }: { r: Resumen }) {
 function Protagonista({ r }: { r: Resumen }) {
   const captura = useCaptura();
   const enRojo = r.libre < 0;
-  const porcentajeLibre = r.ingresoTotal > 0 ? Math.round((Math.max(0, r.libre) / r.ingresoTotal) * 100) : 0;
+  // Lo que entra este mes incluye lo que ya tenías en las cuentas que creaste este mes.
+  const entra = r.ingresoTotal + r.saldoInicialDelMes;
+  const porcentajeLibre = entra > 0 ? Math.round((Math.max(0, r.libre) / entra) * 100) : 0;
 
   const filas = [
     {
@@ -76,6 +78,15 @@ function Protagonista({ r }: { r: Resumen }) {
       valor: r.ingresoTotal,
       signo: "",
     },
+    ...(r.saldoInicialDelMes !== 0
+      ? [
+          {
+            etiqueta: "Lo que ya tenías en tus cuentas",
+            valor: Math.abs(r.saldoInicialDelMes),
+            signo: r.saldoInicialDelMes > 0 ? "+ " : "− ",
+          },
+        ]
+      : []),
     { etiqueta: "Gastado", valor: r.gastado, signo: "− " },
     ...(r.cuotasDelMes > 0
       ? [{ etiqueta: "  de eso, cuotas de tarjeta", valor: r.cuotasDelMes, signo: "", sub: true }]
@@ -134,9 +145,13 @@ function Protagonista({ r }: { r: Resumen }) {
             {pesos(Math.abs(r.sobranteAnterior))}
           </p>
           <p className="mt-0.5 text-[11.5px] text-tinta-3">
-            {r.mesesAnteriores === 0
-              ? "Todavía no hay meses anteriores."
-              : `Suma de ${r.mesesAnteriores} ${r.mesesAnteriores === 1 ? "mes" : "meses"} anteriores.`}
+            {r.mesesAnteriores > 0
+              ? `Suma de ${r.mesesAnteriores} ${r.mesesAnteriores === 1 ? "mes anterior" : "meses anteriores"}.`
+              : r.saldoInicialAnterior === 0
+                ? "Todavía no hay meses anteriores."
+                : ""}
+            {r.saldoInicialAnterior !== 0 &&
+              ` Incluye ${pesos(Math.abs(r.saldoInicialAnterior))} que ya tenías en tus cuentas.`}
           </p>
         </div>
         <div className="rounded-xl border border-acento/40 bg-superficie-alta px-4 py-3">
@@ -221,12 +236,7 @@ export function VistaHoy({ resumen: r }: { resumen: Resumen }) {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
         <Protagonista r={r} />
 
-        <CuentasHoy
-          cuentas={r.cuentas}
-          sobranteAnterior={r.sobranteAnterior}
-          mesesAnteriores={r.mesesAnteriores}
-          className="lg:col-span-2"
-        />
+        <CuentasHoy cuentas={r.cuentas} className="lg:col-span-2" />
 
         <Tarjeta
           titulo="Pagos fijos del mes"

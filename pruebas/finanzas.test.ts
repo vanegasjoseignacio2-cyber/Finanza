@@ -701,6 +701,86 @@ describe("sobrante de meses anteriores y total disponible", () => {
   });
 });
 
+describe("lo que ya tenías en tus cuentas (saldo inicial)", () => {
+  const principal = cuenta({ id: "principal" });
+  const efectivo = (parcial: Parameters<typeof cuenta>[0] = {}) =>
+    cuenta({ id: "efectivo", tipo: "efectivo", nombre: "Efectivo", saldoInicial: 400_000, creadoEn: "2026-09-10T15:00:00.000Z", ...parcial });
+
+  it("la plata de una cuenta de efectivo creada este mes suma a lo libre y al total disponible", () => {
+    const r = componerResumen(entrada({ cuentas: [principal, efectivo()] }));
+    assert.equal(r.saldoInicialDelMes, 400_000);
+    assert.equal(r.libre, 2_000_000 + 400_000); // sueldo esperado + lo que ya tenías
+    assert.equal(r.sobranteAnterior, 0);
+    assert.equal(r.totalDisponible, 2_400_000);
+  });
+
+  it("lo que gastas de esa cuenta ya resta de lo libre", () => {
+    const r = componerResumen(
+      entrada({
+        cuentas: [principal, efectivo()],
+        movimientosMes: [movimiento({ cuentaId: "efectivo", monto: 100_000 })],
+      }),
+    );
+    assert.equal(r.libre, 2_000_000 + 400_000 - 100_000);
+  });
+
+  it("el saldo inicial de la cuenta principal también cuenta, y uno negativo resta", () => {
+    const conSaldo = cuenta({ id: "principal", saldoInicial: 1_000_000, creadoEn: "2026-09-01T12:00:00.000Z" });
+    assert.equal(componerResumen(entrada({ cuentas: [conSaldo] })).libre, 3_000_000);
+    const sobregirada = cuenta({ id: "principal", saldoInicial: -50_000, creadoEn: "2026-09-01T12:00:00.000Z" });
+    assert.equal(componerResumen(entrada({ cuentas: [sobregirada] })).libre, 1_950_000);
+  });
+
+  it("al mes siguiente pasa a lo que sobró de los meses anteriores, no a lo libre", () => {
+    const r = componerResumen(
+      entrada({
+        mes: "2026-10",
+        hoy: "2026-10-05",
+        cuentas: [principal, efectivo()],
+        serie: [
+          { mes: "2026-09", tipo: "ingreso", categoria: "sueldo", total: 2_000_000 },
+          { mes: "2026-09", tipo: "gasto", categoria: "mercado", total: 1_500_000 },
+        ],
+      }),
+    );
+    assert.equal(r.saldoInicialDelMes, 0);
+    assert.equal(r.libre, 2_000_000);
+    assert.equal(r.saldoInicialAnterior, 400_000);
+    assert.equal(r.sobranteAnterior, 500_000 + 400_000);
+    assert.equal(r.totalDisponible, 2_000_000 + 900_000);
+  });
+
+  it("un mes anterior a la creación de la cuenta no la cuenta", () => {
+    const r = componerResumen(entrada({ mes: "2026-08", hoy: "2026-09-21", cuentas: [principal, efectivo()] }));
+    assert.equal(r.saldoInicialDelMes, 0);
+    assert.equal(r.saldoInicialAnterior, 0);
+  });
+
+  it("no cuentan las tarjetas, las cuentas de ahorro ni las archivadas", () => {
+    const r = componerResumen(
+      entrada({
+        cuentas: [
+          principal,
+          cuenta({ id: "nu", tipo: "tarjeta", saldoInicial: -500_000, creadoEn: "2026-09-10T15:00:00.000Z" }),
+          cuenta({ id: "ahorro", tipo: "ahorro", saldoInicial: 1_000_000, creadoEn: "2026-09-10T15:00:00.000Z" }),
+          efectivo({ archivada: true }),
+        ],
+      }),
+    );
+    assert.equal(r.saldoInicialDelMes, 0);
+    assert.equal(r.libre, 2_000_000);
+  });
+
+  it("el mes de creación se mira en la zona de la app, no en UTC", () => {
+    // 1 de octubre 02:00 UTC = 30 de septiembre, 9 p. m. en Colombia.
+    const tarde = efectivo({ creadoEn: "2026-10-01T02:00:00.000Z" });
+    assert.equal(componerResumen(entrada({ mes: "2026-09", cuentas: [principal, tarde] })).saldoInicialDelMes, 400_000);
+    const octubre = componerResumen(entrada({ mes: "2026-10", hoy: "2026-10-05", cuentas: [principal, tarde] }));
+    assert.equal(octubre.saldoInicialDelMes, 0);
+    assert.equal(octubre.saldoInicialAnterior, 400_000);
+  });
+});
+
 describe("próximo pago de la tarjeta", () => {
   const nu = cuenta({ id: "nu", nombre: "Nu", tipo: "tarjeta", diaPago: 7 });
   const gasto = (mes: string, total: number) => ({ tipo: "gasto" as const, cuentaId: "nu", cuentaDestinoId: null, mes, total });
