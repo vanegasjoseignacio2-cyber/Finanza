@@ -306,6 +306,31 @@ export function cuentaPrincipal(cuentas: Cuenta[]): Cuenta | undefined {
 }
 
 /**
+ * Cuenta de destino de una transferencia desde `origenId`. Respeta la elegida si
+ * existe y no es la de origen (no se puede transferir de una cuenta a sí misma);
+ * si no, toma la primera otra cuenta. Es "" cuando no hay otra.
+ */
+export function destinoDeTransferencia(cuentas: { id: string }[], origenId: string, destinoId: string): string {
+  if (destinoId !== origenId && cuentas.some((c) => c.id === destinoId)) return destinoId;
+  return cuentas.find((c) => c.id !== origenId)?.id ?? "";
+}
+
+/**
+ * Origen y destino de una transferencia al elegir otro origen. Si el nuevo origen
+ * era el destino, se intercambian (Principal → Nu pasa a Nu → Principal); si no,
+ * el destino se conserva.
+ */
+export function cambiarOrigenDeTransferencia(
+  cuentas: { id: string }[],
+  origenId: string,
+  destinoId: string,
+  nuevoOrigenId: string,
+): { origenId: string; destinoId: string } {
+  const destino = destinoDeTransferencia(cuentas, origenId, destinoId);
+  return { origenId: nuevoOrigenId, destinoId: destino === nuevoOrigenId ? origenId : destino };
+}
+
+/**
  * Saldo de cada cuenta = saldo inicial + todo lo registrado que la toca.
  * Los movimientos antiguos sin cuenta pertenecen a la cuenta principal.
  */

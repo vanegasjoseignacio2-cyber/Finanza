@@ -8,7 +8,9 @@ import {
   calcularSaldos,
   calcularSobranteAnterior,
   calendarioCuotas,
+  cambiarOrigenDeTransferencia,
   calcularPagosTarjeta,
+  destinoDeTransferencia,
   primeraCuotaPorDefecto,
   calcularTendencia,
   componerResumen,
@@ -334,6 +336,63 @@ describe("saldos por cuenta", () => {
   it("un aporte a una meta sin cuenta solo sale de la cuenta de origen", () => {
     const [s] = calcularSaldos([cuenta({ id: "c1" })], [suma({ tipo: "ahorro", cuentaId: "c1", total: 70 })]);
     assert.equal(s.saldo, -70);
+  });
+});
+
+describe("transferir: el origen y el destino siempre son cuentas distintas", () => {
+  const principal = cuenta({ id: "principal", nombre: "Principal" });
+  const efectivo = cuenta({ id: "efectivo", tipo: "efectivo", nombre: "Efectivo" });
+  const ahorro = cuenta({ id: "ahorro", tipo: "ahorro", nombre: "Ahorro" });
+  const nu = cuenta({ id: "nu", tipo: "tarjeta", nombre: "Nu", diaPago: 8 });
+  const falabella = cuenta({ id: "falabella", tipo: "tarjeta", nombre: "Falabella", diaPago: 20 });
+  const todas = [principal, efectivo, ahorro, nu, falabella];
+  const ids = todas.map((c) => c.id);
+
+  it("con dos cuentas (banco y tarjeta) el destino es la otra", () => {
+    const dos = [principal, nu];
+    assert.equal(destinoDeTransferencia(dos, "principal", "nu"), "nu");
+    assert.equal(destinoDeTransferencia(dos, "principal", "principal"), "nu");
+    assert.equal(destinoDeTransferencia(dos, "nu", "nu"), "principal");
+  });
+
+  it("elegir de origen la cuenta que era el destino los intercambia", () => {
+    const dos = [principal, nu];
+    assert.deepEqual(cambiarOrigenDeTransferencia(dos, "principal", "nu", "nu"), { origenId: "nu", destinoId: "principal" });
+    assert.deepEqual(cambiarOrigenDeTransferencia(dos, "nu", "principal", "principal"), { origenId: "principal", destinoId: "nu" });
+  });
+
+  it("con varias cuentas y tarjetas, el destino elegido se conserva si sigue siendo válido", () => {
+    // Principal → Nu; cambiar el origen a Efectivo, Ahorro o Falabella no toca el destino.
+    for (const nuevo of ["efectivo", "ahorro", "falabella"]) {
+      assert.deepEqual(cambiarOrigenDeTransferencia(todas, "principal", "nu", nuevo), { origenId: nuevo, destinoId: "nu" });
+    }
+    // Pagar una tarjeta con otra (Nu → Falabella) es válido.
+    assert.equal(destinoDeTransferencia(todas, "nu", "falabella"), "falabella");
+  });
+
+  it("ninguna combinación de origen y destino deja la misma cuenta en los dos lados", () => {
+    for (const origen of ids) {
+      for (const destino of [...ids, "", "ya-no-existe"]) {
+        const d = destinoDeTransferencia(todas, origen, destino);
+        assert.notEqual(d, origen, `${origen} → ${destino}`);
+        assert.ok(ids.includes(d), `${origen} → ${destino} debe dar una cuenta real`);
+        // Un destino válido se respeta tal cual.
+        if (destino !== origen && ids.includes(destino)) assert.equal(d, destino);
+        for (const nuevo of ids) {
+          const r = cambiarOrigenDeTransferencia(todas, origen, destino, nuevo);
+          assert.equal(r.origenId, nuevo);
+          assert.notEqual(r.destinoId, r.origenId, `${origen} → ${destino}, origen nuevo ${nuevo}`);
+          assert.ok(ids.includes(r.destinoId));
+        }
+      }
+    }
+  });
+
+  it("un destino archivado o inexistente se reemplaza; sin otra cuenta no hay destino", () => {
+    const activas = [principal, efectivo];
+    assert.equal(destinoDeTransferencia(activas, "principal", "nu"), "efectivo");
+    assert.equal(destinoDeTransferencia([principal], "principal", "principal"), "");
+    assert.equal(destinoDeTransferencia([], "principal", "nu"), "");
   });
 });
 

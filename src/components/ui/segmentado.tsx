@@ -21,6 +21,7 @@ export function Segmentado<T extends string>({
   onCambio,
   columnas = "grid-cols-3",
   ocultarEtiqueta = false,
+  maxPorFila,
 }: {
   etiqueta: string;
   opciones: Opcion<T>[];
@@ -30,8 +31,17 @@ export function Segmentado<T extends string>({
   columnas?: string;
   /** Deja la etiqueta solo para lectores de pantalla (el grupo conserva su nombre). */
   ocultarEtiqueta?: boolean;
+  /**
+   * Solo con iconos: tope de opciones por fila. Si hay más, se reparten en filas
+   * parejas (5 → 3 + 2) en vez de apretarlas hasta cortar los nombres.
+   */
+  maxPorFila?: number;
 }) {
   const conIconos = opciones.some((o) => o.icono);
+  const columnasConIconos =
+    maxPorFila && opciones.length > maxPorFila
+      ? Math.ceil(opciones.length / Math.ceil(opciones.length / maxPorFila))
+      : opciones.length;
   return (
     <div>
       <span className={ocultarEtiqueta ? "sr-only" : "mb-1.5 block text-[13px] font-medium text-tinta-2"}>{etiqueta}</span>
@@ -39,7 +49,7 @@ export function Segmentado<T extends string>({
         role="radiogroup"
         aria-label={etiqueta}
         className={`grid rounded-xl border border-borde-suave bg-fondo-alto p-1 ${conIconos ? "gap-0.5" : `gap-1 ${columnas}`}`}
-        style={conIconos ? { gridTemplateColumns: `repeat(${opciones.length}, minmax(0, 1fr))` } : undefined}
+        style={conIconos ? { gridTemplateColumns: `repeat(${columnasConIconos}, minmax(0, 1fr))` } : undefined}
       >
         {opciones.map((opcion) => {
           const activo = opcion.valor === valor;

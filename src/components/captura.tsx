@@ -36,7 +36,13 @@ import { Segmentado, type Opcion } from "@/components/ui/segmentado";
 import { peticion } from "@/lib/cliente";
 import { pesos } from "@/lib/dinero";
 import { fechaCorta, fechaLarga, hoyISO, nombreMes } from "@/lib/fechas";
-import { calendarioCuotas, primeraCuotaPorDefecto, repartirCuotas } from "@/lib/finanzas";
+import {
+  calendarioCuotas,
+  cambiarOrigenDeTransferencia,
+  destinoDeTransferencia,
+  primeraCuotaPorDefecto,
+  repartirCuotas,
+} from "@/lib/finanzas";
 import type { Movimiento, TipoCuenta, TipoMovimiento } from "@/lib/types";
 
 /** Lo que se precarga al abrir: vacío (nuevo), un movimiento (editar) o una copia (repetir). */
@@ -184,6 +190,9 @@ const TIPOS: Opcion<TipoMovimiento>[] = [
   { valor: "transferencia", etiqueta: "Transferir", icono: ArrowLeftRight },
 ];
 
+// Con más cuentas que esto, el selector pasa a dos filas en vez de cortar los nombres.
+const MAX_CUENTAS_POR_FILA = 4;
+
 // Cada cuenta lleva el icono de su tipo: así el selector de cuentas se dibuja igual que el de arriba (iconos, una sola fila).
 const ICONO_CUENTA: Record<TipoCuenta, LucideIcon> = {
   corriente: Landmark,
@@ -254,6 +263,16 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
   const [cuentaDestinoId, setCuentaDestinoId] = useState(
     borrador.cuentaDestinoId ?? cuentasActivas.find((c) => c.id !== cuentaId)?.id ?? "",
   );
+  // El destino de una transferencia nunca puede ser el mismo origen: si por cualquier
+  // camino coincidieran (o el destino ya no existiera), se toma otra cuenta.
+  const destinoEfectivo = destinoDeTransferencia(cuentasActivas, cuentaId, cuentaDestinoId);
+  const opcionesDestino = opcionesCuenta.filter((o) => o.valor !== cuentaId);
+
+  function elegirOrigen(id: string) {
+    const siguiente = cambiarOrigenDeTransferencia(cuentasActivas, cuentaId, cuentaDestinoId, id);
+    setCuentaId(siguiente.origenId);
+    setCuentaDestinoId(siguiente.destinoId);
+  }
   const [metaId, setMetaId] = useState(borrador.metaId ?? metasActivas[0]?.id ?? "");
   const [recurrenteId, setRecurrenteId] = useState(borrador.recurrenteId ?? "");
   const [error, setError] = useState("");
@@ -346,7 +365,7 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
       fecha,
       nota,
       cuentaId,
-      cuentaDestinoId: tipo === "transferencia" ? cuentaDestinoId : null,
+      cuentaDestinoId: tipo === "transferencia" ? destinoEfectivo : null,
       metaId: tipo === "ahorro" || tipo === "retiro" ? metaId : null,
       recurrenteId: tipo === "gasto" && recurrenteId ? recurrenteId : null,
       cuotas: nCuotas > 1 ? nCuotas : undefined,
@@ -408,7 +427,7 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
     comparar("Monto", pesos(borrador.monto ?? 0), pesos(monto ?? 0));
     comparar("Fecha", borrador.fecha ? fechaLarga(borrador.fecha) : "—", /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? fechaLarga(fecha) : fecha);
     comparar(tipo === "transferencia" ? "Desde" : "Cuenta", nombreCuenta(borrador.cuentaId), nombreCuenta(cuentaId));
-    if (tipo === "transferencia") comparar("Hacia", nombreCuenta(borrador.cuentaDestinoId), nombreCuenta(cuentaDestinoId));
+    if (tipo === "transferencia") comparar("Hacia", nombreCuenta(borrador.cuentaDestinoId), nombreCuenta(destinoEfectivo));
     if (tipo === "gasto") comparar("Pago fijo", nombrePagoFijo(borrador.recurrenteId), nombrePagoFijo(recurrenteId || null));
     comparar("Nota", borrador.nota || "Sin nota", nota || "Sin nota");
   }
@@ -487,13 +506,22 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
       {tipo === "transferencia" ? (
         cuentasActivas.length >= 2 && (
           <div className="flex flex-col gap-4">
-            <Segmentado etiqueta="Desde" opciones={opcionesCuenta} valor={cuentaId} onCambio={setCuentaId} columnas="grid-cols-2" />
+            <Segmentado
+              etiqueta="Desde"
+              opciones={opcionesCuenta}
+              valor={cuentaId}
+              onCambio={elegirOrigen}
+              columnas="grid-cols-2"
+              maxPorFila={MAX_CUENTAS_POR_FILA}
+            />
+            {/* Sin la cuenta de origen: no se puede transferir de una cuenta a sí misma. */}
             <Segmentado
               etiqueta="Hacia"
-              opciones={opcionesCuenta}
-              valor={cuentaDestinoId}
+              opciones={opcionesDestino}
+              valor={destinoEfectivo}
               onCambio={setCuentaDestinoId}
-              columnas="grid-cols-2"
+              columnas={opcionesDestino.length > 1 ? "grid-cols-2" : "grid-cols-1"}
+              maxPorFila={MAX_CUENTAS_POR_FILA}
             />
           </div>
         )
@@ -505,6 +533,7 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
             valor={cuentaId}
             onCambio={setCuentaId}
             columnas="grid-cols-2"
+            maxPorFila={MAX_CUENTAS_POR_FILA}
           />
         )
       )}
