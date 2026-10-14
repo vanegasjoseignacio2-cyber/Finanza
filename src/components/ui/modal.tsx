@@ -52,7 +52,8 @@ export function Modal({ abierto, titulo, descripcion, onCerrar, children }: Prop
       if (focuseables.length === 0) return;
       const primero = focuseables[0];
       const ultimo = focuseables[focuseables.length - 1];
-      if (e.shiftKey && document.activeElement === primero) {
+      // Con el foco en el propio diálogo (así se abre), Shift+Tab también salta al último.
+      if (e.shiftKey && (document.activeElement === primero || document.activeElement === panel.current)) {
         e.preventDefault();
         ultimo.focus();
       } else if (!e.shiftKey && document.activeElement === ultimo) {
@@ -63,10 +64,10 @@ export function Modal({ abierto, titulo, descripcion, onCerrar, children }: Prop
 
     const anterior = document.activeElement as HTMLElement | null;
     document.addEventListener("keydown", alPulsar);
+    // El foco inicial va al diálogo mismo, no a su primer botón (la X): así no se abre el
+    // tooltip de "Cerrar" ni salta el teclado del celular sobre un campo. Tab entra a la X.
     const t = window.setTimeout(() => {
-      panel.current
-        ?.querySelector<HTMLElement>("input,select,textarea,button")
-        ?.focus();
+      panel.current?.focus({ preventScroll: true });
     }, 60);
 
     return () => {
@@ -99,6 +100,10 @@ export function Modal({ abierto, titulo, descripcion, onCerrar, children }: Prop
             role="dialog"
             aria-modal="true"
             aria-label={titulo}
+            tabIndex={-1}
+            // En línea: la regla global de :focus-visible no está en una capa de Tailwind y le
+            // ganaría a la clase; el foco inicial va al diálogo y no debe dibujar un contorno.
+            style={{ outline: "none" }}
             initial={{ opacity: 0, y: 24, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 16, scale: 0.98, transition: { duration: 0.15 } }}

@@ -31,7 +31,17 @@ export function Tooltip({
 
   return (
     <TooltipPrimitivo.Root open={abierto} onOpenChange={setAbierto}>
-      <TooltipPrimitivo.Trigger asChild>{children}</TooltipPrimitivo.Trigger>
+      {/* Radix abre el tooltip con cualquier foco, también el que da el código (al abrir un
+          modal o al devolver el foco al botón que lo abrió) y se quedaba abierto. Solo se
+          abre con foco de teclado (:focus-visible): preventDefault evita la apertura. */}
+      <TooltipPrimitivo.Trigger
+        asChild
+        onFocus={(e) => {
+          if (!e.currentTarget.matches(":focus-visible")) e.preventDefault();
+        }}
+      >
+        {children}
+      </TooltipPrimitivo.Trigger>
       <AnimatePresence>
         {abierto && (
           <TooltipPrimitivo.Portal forceMount>
