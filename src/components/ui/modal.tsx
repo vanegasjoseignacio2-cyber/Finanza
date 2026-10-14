@@ -20,6 +20,13 @@ const pila: object[] = [];
 
 export function Modal({ abierto, titulo, descripcion, onCerrar, children }: Props) {
   const panel = useRef<HTMLDivElement>(null);
+  // `onCerrar` suele cambiar en cada render del padre. Si el efecto de abajo dependiera
+  // de él, se reiniciaría con cada letra tecleada en un campo del modal: devolvería el
+  // foco al botón que lo abrió y en iPhone se escondería el teclado.
+  const cerrarRef = useRef(onCerrar);
+  useEffect(() => {
+    cerrarRef.current = onCerrar;
+  });
 
   // Aparte del resto: solo depende de si está abierto, no de `onCerrar`, que cambia
   // en cada render del padre y haría soltar y volver a fijar la página cada vez.
@@ -36,7 +43,7 @@ export function Modal({ abierto, titulo, descripcion, onCerrar, children }: Prop
 
     const alPulsar = (e: KeyboardEvent) => {
       if (pila.at(-1) !== yo) return;
-      if (e.key === "Escape") onCerrar();
+      if (e.key === "Escape") cerrarRef.current();
       if (e.key !== "Tab" || !panel.current) return;
       // Mantiene el foco dentro del diálogo mientras está abierto.
       const focuseables = panel.current.querySelectorAll<HTMLElement>(
@@ -68,7 +75,7 @@ export function Modal({ abierto, titulo, descripcion, onCerrar, children }: Prop
       window.clearTimeout(t);
       anterior?.focus?.();
     };
-  }, [abierto, onCerrar]);
+  }, [abierto]);
 
   return (
     <AnimatePresence>

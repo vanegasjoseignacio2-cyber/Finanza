@@ -33,6 +33,9 @@ export function Confirmar({
   const [cargando, setCargando] = useState(false);
   const [escrito, setEscrito] = useState("");
   const habilitado = !palabra || escrito.trim().toLowerCase() === palabra.toLowerCase();
+  // Aviso en vivo: lo escrito hasta ahora tiene que ser el comienzo de la palabra.
+  const parcial = escrito.trim().toLowerCase();
+  const equivocado = Boolean(palabra) && parcial !== "" && !palabra!.toLowerCase().startsWith(parcial);
 
   function cerrar() {
     setEscrito("");
@@ -66,6 +69,8 @@ export function Confirmar({
             autoCorrect="off"
             spellCheck={false}
             placeholder={palabra}
+            error={equivocado ? `No coincide: escribe «${palabra}» letra por letra.` : undefined}
+            ayuda={habilitado ? "Listo, ya puedes confirmar." : undefined}
           />
         )}
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
