@@ -642,9 +642,14 @@ describe("capa de datos contra MongoDB", { skip: omitir }, () => {
       assert.equal(calcularSaldos(cuentas, await datos.sumasHistoricas()).find((c) => c.id === banco.id)?.saldo, 950_000);
     });
 
-    it("solo se eliminan tarjetas: las otras cuentas se archivan", async () => {
-      const banco = await datos.crearCuenta({ nombre: "Banco", tipo: "corriente", saldoInicial: 0 });
-      await assert.rejects(datos.eliminarCuenta(banco.id), /se archivan/);
+    it("se puede eliminar cualquier cuenta, pero siempre queda otra activa", async () => {
+      const efectivo = await datos.crearCuenta({ nombre: "Prueba", tipo: "efectivo", saldoInicial: 10_000 });
+      await datos.crearMovimiento({ tipo: "gasto", categoria: "mercado", monto: 500, fecha: "2026-10-01", nota: "", cuentaId: efectivo.id });
+      assert.equal((await datos.eliminarCuenta(efectivo.id)).movimientos, 1);
+      assert.ok(!(await datos.listarCuentas()).some((c) => c.id === efectivo.id));
+      const activas = (await datos.listarCuentas()).filter((c) => !c.archivada);
+      for (const c of activas.slice(1)) await datos.eliminarCuenta(c.id);
+      await assert.rejects(datos.eliminarCuenta(activas[0].id), /al menos una cuenta activa/);
       await assert.rejects(datos.eliminarCuenta("6abe7b2eba3046de140c6bcd"), /No encontramos/);
     });
 

@@ -326,30 +326,46 @@ export function FormularioCuenta({
  * Botón (ícono) para eliminar una tarjeta de crédito con su confirmación. Borra
  * la tarjeta y sus compras en cuotas; lo que ya pagaste desde tu banco se conserva.
  */
-export function BotonEliminarTarjeta({ cuenta, className = "" }: { cuenta: CuentaConSaldo; className?: string }) {
+export function BotonEliminarCuenta({
+  cuenta,
+  deshabilitado = false,
+  className = "",
+}: {
+  cuenta: CuentaConSaldo;
+  /** Cuando es la única cuenta activa: siempre debe quedar una. */
+  deshabilitado?: boolean;
+  className?: string;
+}) {
   const { ejecutar } = useEjecutar();
   const [abierto, setAbierto] = useState(false);
+  const esTarjeta = cuenta.tipo === "tarjeta";
   return (
     <>
       <button
         type="button"
         className={className}
-        aria-label={`Eliminar la tarjeta ${cuenta.nombre}`}
-        title="Eliminar tarjeta"
+        aria-label={`Eliminar ${esTarjeta ? "la tarjeta " : "la cuenta "}${cuenta.nombre}`}
+        title={deshabilitado ? "Necesitas al menos otra cuenta" : "Eliminar"}
+        disabled={deshabilitado}
         onClick={() => setAbierto(true)}
       >
         <Trash2 className="size-4" aria-hidden="true" />
       </button>
       <Confirmar
         abierto={abierto}
-        titulo={`¿Eliminar la tarjeta ${cuenta.nombre}?`}
-        descripcion="Se borra la tarjeta con todas sus compras y cuotas, y esas cuotas dejan de descontarse de lo libre de cada mes. Los pagos que hiciste desde tu banco se conservan. No se puede deshacer."
-        accion="Eliminar tarjeta"
+        titulo={`¿Eliminar ${esTarjeta ? "la tarjeta" : "la cuenta"} ${cuenta.nombre}?`}
+        descripcion={
+          esTarjeta
+            ? "Se borra la tarjeta con todas sus compras y cuotas, y esas cuotas dejan de descontarse de lo libre de cada mes. Los pagos que hiciste desde tu banco se conservan. No se puede deshacer."
+            : "Se borra la cuenta con sus gastos e ingresos. Las transferencias hacia o desde otras cuentas se conservan para que sus saldos no cambien. No se puede deshacer; si solo quieres ocultarla, archívala."
+        }
+        accion={esTarjeta ? "Eliminar tarjeta" : "Eliminar cuenta"}
+        palabra="eliminar"
         onConfirmar={async () => {
           await ejecutar(
             `eliminar-${cuenta.id}`,
             () => peticion(`/api/cuentas/${cuenta.id}`, { method: "DELETE" }),
-            `Tarjeta ${cuenta.nombre} eliminada.`,
+            `${esTarjeta ? "Tarjeta" : "Cuenta"} ${cuenta.nombre} eliminada.`,
           );
         }}
         onCerrar={() => setAbierto(false)}

@@ -376,19 +376,22 @@ export async function crearCuentaConDeuda(datos: {
 }
 
 /**
- * Elimina una tarjeta de crédito y sus compras (gastos e ingresos de esa
- * cuenta). Las transferencias que la tocan se conservan, para que los saldos de
- * las otras cuentas no cambien (p. ej. lo que ya pagaste desde tu banco). Las
- * demás cuentas no se eliminan: se archivan.
+ * Elimina una cuenta (de cualquier tipo) y sus gastos e ingresos. Las
+ * transferencias que la tocan se conservan, para que los saldos de las otras
+ * cuentas no cambien (p. ej. lo que ya pagaste desde tu banco). Siempre debe
+ * quedar otra cuenta activa. Si era la principal, también se borra lo antiguo
+ * sin cuenta, que le pertenecía.
  */
 export async function eliminarCuenta(id: string): Promise<{ movimientos: number }> {
-  const cuenta = (await listarCuentas()).find((c) => c.id === id);
+  const cuentas = await listarCuentas();
+  const cuenta = cuentas.find((c) => c.id === id);
   if (!cuenta) throw new ErrorNoEncontrado("No encontramos esa cuenta.");
-  if (cuenta.tipo !== "tarjeta") {
-    throw new ErrorValidacion("Solo se pueden eliminar tarjetas de crédito; las demás cuentas se archivan.");
+  if (!cuentas.some((c) => c.id !== id && !c.archivada)) {
+    throw new ErrorValidacion("Necesitas al menos una cuenta activa: crea otra antes de eliminar esta.");
   }
+  const esPrincipal = cuentaPrincipal(cuentas)?.id === id;
   const borrados = await (await colecciones.movimientos()).deleteMany({
-    cuentaId: id,
+    $or: [{ cuentaId: id }, ...(esPrincipal ? [{ cuentaId: null }] : [])],
     tipo: { $in: ["gasto", "ingreso"] },
   });
   await (await colecciones.metas()).updateMany({ cuentaId: id }, { $set: { cuentaId: null } });

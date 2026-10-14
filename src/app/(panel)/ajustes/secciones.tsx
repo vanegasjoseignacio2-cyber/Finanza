@@ -20,7 +20,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { Icono } from "@/components/iconos";
-import { BotonEliminarTarjeta, FormularioCuenta, TIPOS_CUENTA } from "@/components/paneles/formulario-cuenta";
+import { BotonEliminarCuenta, FormularioCuenta, TIPOS_CUENTA } from "@/components/paneles/formulario-cuenta";
 import { useAvisos } from "@/components/ui/avisos";
 import { Boton, BotonEnlace } from "@/components/ui/boton";
 import { Campo, Desplegable, Interruptor } from "@/components/ui/campo";
@@ -242,7 +242,7 @@ export function SeccionCuentas({ cuentas }: { cuentas: CuentaConSaldo[] }) {
                 <Pencil className="size-4" aria-hidden="true" />
               </button>
             </Tooltip>
-            {c.tipo === "tarjeta" && <BotonEliminarTarjeta cuenta={c} className={botonIcono} />}
+            <BotonEliminarCuenta cuenta={c} deshabilitado={activas.length === 1} className={botonIcono} />
             <Tooltip texto="Archivar">
               <button
                 type="button"
@@ -261,7 +261,8 @@ export function SeccionCuentas({ cuentas }: { cuentas: CuentaConSaldo[] }) {
         <ul className="mt-3 flex flex-col border-t border-borde-suave pt-2">
           {archivadas.map((c) => (
             <li key={c.id} className="flex items-center justify-between gap-2 py-1">
-              <span className="text-[13.5px] text-tinta-3">{c.nombre} (archivada)</span>
+              <span className="min-w-0 flex-1 truncate text-[13.5px] text-tinta-3">{c.nombre} (archivada)</span>
+              <BotonEliminarCuenta cuenta={c} className={botonIcono} />
               <Boton
                 tamano="sm"
                 variante="fantasma"

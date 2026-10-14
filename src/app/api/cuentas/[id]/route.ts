@@ -17,7 +17,7 @@ export const PATCH = protegido<Ctx>(async (request, { params }) => {
   return Response.json({ cuenta: await actualizarCuenta(id, cambios) });
 });
 
-/** Elimina una tarjeta de crédito con sus compras (las demás cuentas se archivan). */
+/** Elimina una cuenta con sus gastos e ingresos (siempre debe quedar otra activa). */
 export const DELETE = protegido<Ctx>(async (_request, { params }) => {
   const { movimientos } = await eliminarCuenta((await params).id);
   return Response.json({ ok: true, movimientos });
