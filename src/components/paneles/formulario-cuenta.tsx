@@ -1,14 +1,15 @@
 "use client";
 
-import { Trash2 } from "lucide-react";
+import { motion, useReducedMotion } from "framer-motion";
+import { Banknote, CreditCard, Landmark, PiggyBank, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useAvisos } from "@/components/ui/avisos";
 import { Boton } from "@/components/ui/boton";
 import { Campo } from "@/components/ui/campo";
 import { CampoDinero } from "@/components/ui/campo-dinero";
 import { Confirmar } from "@/components/ui/confirmar";
-import { Segmentado } from "@/components/ui/segmentado";
+import { Segmentado, type Opcion } from "@/components/ui/segmentado";
 import { peticion } from "@/lib/cliente";
 import { pesos } from "@/lib/dinero";
 import { fechaCorta, hoyISO } from "@/lib/fechas";
@@ -42,6 +43,53 @@ export const TIPOS_CUENTA: { valor: TipoCuenta; etiqueta: string }[] = [
   { valor: "efectivo", etiqueta: "Efectivo" },
   { valor: "ahorro", etiqueta: "Ahorro" },
   { valor: "tarjeta", etiqueta: "Tarjeta de crédito" },
+];
+
+/**
+ * Caja que sigue suavemente el alto de lo que lleva dentro. Al cambiar de tipo de cuenta, la sección
+ * de abajo cambia de tamaño (la tarjeta tiene más campos): en vez de que el formulario salte de un
+ * alto al otro, el alto se anima de una sola vez, de lo que había a lo que hay, y lo nuevo aparece con
+ * un fundido. Sin plegar primero y desplegar después, que se sentía como dos saltos seguidos.
+ * El borde se recorta solo mientras anima, para no cortar el anillo de enfoque de los campos.
+ */
+function AlturaSuave({ children, className = "" }: { children: ReactNode; className?: string }) {
+  const interno = useRef<HTMLDivElement>(null);
+  const [alto, setAlto] = useState<number | "auto">("auto");
+  const [animando, setAnimando] = useState(false);
+  const sinMovimiento = useReducedMotion();
+
+  useEffect(() => {
+    const el = interno.current;
+    if (!el) return;
+    const medir = () => setAlto(el.getBoundingClientRect().height);
+    medir();
+    const observador = new ResizeObserver(medir);
+    observador.observe(el);
+    return () => observador.disconnect();
+  }, []);
+
+  return (
+    <motion.div
+      initial={false}
+      animate={{ height: alto }}
+      transition={sinMovimiento ? { duration: 0 } : { duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+      onAnimationStart={() => setAnimando(true)}
+      onAnimationComplete={() => setAnimando(false)}
+      style={{ overflow: animando ? "hidden" : "visible" }}
+    >
+      <div ref={interno} className={className}>
+        {children}
+      </div>
+    </motion.div>
+  );
+}
+
+/** Mismo selector con íconos que el de un movimiento nuevo: una sola fila. */
+const OPCIONES_TIPO: Opcion<TipoCuenta>[] = [
+  { valor: "corriente", etiqueta: "Banco", icono: Landmark },
+  { valor: "efectivo", etiqueta: "Efectivo", icono: Banknote },
+  { valor: "ahorro", etiqueta: "Ahorro", icono: PiggyBank },
+  { valor: "tarjeta", etiqueta: "Tarjeta", icono: CreditCard },
 ];
 
 const CUOTAS_FRECUENTES = [3, 6, 12, 24, 36];
@@ -138,9 +186,16 @@ export function FormularioCuenta({
         maxLength={40}
         required
       />
-      <Segmentado etiqueta="Tipo" opciones={TIPOS_CUENTA} valor={tipo} onCambio={setTipo} columnas="grid-cols-2" />
+      <Segmentado etiqueta="Tipo" opciones={OPCIONES_TIPO} valor={tipo} onCambio={setTipo} />
+      <AlturaSuave>
       {esTarjeta ? (
-        <>
+        <motion.div
+          key="tarjeta"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.25 }}
+          className="flex flex-col gap-4"
+        >
           <CampoDinero
             etiqueta="Cupo de la tarjeta (opcional)"
             valor={cupo}
@@ -248,15 +303,18 @@ export function FormularioCuenta({
               )}
             </div>
           )}
-        </>
+        </motion.div>
       ) : (
-        <CampoDinero
-          etiqueta="Saldo inicial"
-          valor={saldoInicial}
-          onCambio={setSaldoInicial}
-          ayuda="Lo que tenía la cuenta antes de empezar a registrar en la app."
-        />
+        <motion.div key="saldo" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}>
+          <CampoDinero
+            etiqueta="Saldo inicial"
+            valor={saldoInicial}
+            onCambio={setSaldoInicial}
+            ayuda="Lo que tenía la cuenta antes de empezar a registrar en la app."
+          />
+        </motion.div>
       )}
+      </AlturaSuave>
       <Boton type="submit" cargando={ocupado === "cuenta"} className="self-end">
         {cuenta ? "Guardar cambios" : "Crear cuenta"}
       </Boton>

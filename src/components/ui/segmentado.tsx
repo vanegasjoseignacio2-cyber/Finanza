@@ -1,8 +1,7 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
-import { useId } from "react";
 
 export interface Opcion<T extends string> {
   valor: T;
@@ -32,7 +31,6 @@ export function Segmentado<T extends string>({
   /** Deja la etiqueta solo para lectores de pantalla (el grupo conserva su nombre). */
   ocultarEtiqueta?: boolean;
 }) {
-  const id = useId();
   const conIconos = opciones.some((o) => o.icono);
   return (
     <div>
@@ -51,23 +49,30 @@ export function Segmentado<T extends string>({
               key={opcion.valor}
               type="button"
               role="radio"
+              title={conIconos ? opcion.etiqueta : undefined}
               aria-checked={activo}
               onClick={() => onCambio(opcion.valor)}
               className={`relative cursor-pointer rounded-lg font-medium transition-colors ${
                 conIconos
-                  ? "flex min-h-[3.25rem] flex-col items-center justify-center gap-1 px-0.5 text-[11.5px] leading-none tracking-tight whitespace-nowrap sm:text-[12.5px]"
+                  ? "flex min-h-[3.25rem] min-w-0 flex-col items-center justify-center gap-1 px-1 text-[11.5px] leading-none tracking-tight whitespace-nowrap sm:text-[12.5px]"
                   : "min-h-11 px-2 text-[13px]"
               } ${activo ? "text-[#04121c]" : "text-tinta-3 hover:text-tinta-2"}`}
             >
-              {activo && (
-                <motion.span
-                  layoutId={`segmento-${id}`}
-                  transition={{ type: "spring", stiffness: 420, damping: 32 }}
-                  className="absolute inset-0 rounded-lg bg-acento"
-                />
-              )}
+              {/* El fondo se rellena desde el centro hacia las esquinas. */}
+              <AnimatePresence initial={false}>
+                {activo && (
+                  <motion.span
+                    key="fondo"
+                    initial={{ clipPath: "circle(0% at 50% 50%)" }}
+                    animate={{ clipPath: "circle(75% at 50% 50%)" }}
+                    exit={{ opacity: 0, transition: { duration: 0.15 } }}
+                    transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+                    className="absolute inset-0 rounded-lg bg-acento"
+                  />
+                )}
+              </AnimatePresence>
               {Icono && <Icono className="relative size-[18px] shrink-0" aria-hidden="true" />}
-              <span className="relative">{opcion.etiqueta}</span>
+              <span className={conIconos ? "relative max-w-full truncate" : "relative"}>{opcion.etiqueta}</span>
             </button>
           );
         })}

@@ -283,7 +283,7 @@ export function BarraInferiorMovil() {
         <Link
           href={href}
           aria-current={activo ? "page" : undefined}
-          className={`relative flex min-h-16 flex-col items-center justify-center gap-1 px-1 text-[11px] font-medium transition-colors ${
+          className={`relative flex min-h-[4.5rem] flex-col items-center justify-center gap-1 px-1 text-[11px] font-medium transition-colors ${
             activo ? "text-acento" : "text-tinta-3"
           }`}
         >
@@ -304,9 +304,9 @@ export function BarraInferiorMovil() {
   return (
     <nav
       aria-label="Principal"
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-borde-suave bg-fondo/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-borde-suave bg-fondo/95 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] backdrop-blur-xl lg:hidden"
     >
-      <ul className="grid grid-cols-5 items-center">
+      <ul className="grid grid-cols-5 items-center px-2">
         {enlace(a)}
         {enlace(b)}
         <li className="flex justify-center">

@@ -5,6 +5,7 @@ import { ArrowRight, Check, Circle, Wallet } from "lucide-react";
 import Link from "next/link";
 import { useCaptura } from "@/components/captura";
 import { ListaAlertas } from "@/components/paneles/alertas";
+import { CuentasHoy } from "@/components/paneles/cuentas-hoy";
 import { Barra } from "@/components/paneles/barra";
 import { ListaMovimientos } from "@/components/paneles/lista-movimientos";
 import { ListaPagosFijos } from "@/components/paneles/pagos-fijos";
@@ -89,7 +90,7 @@ function Protagonista({ r }: { r: Resumen }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
       aria-labelledby="titulo-libre"
-      className="tarjeta p-5 sm:p-7 lg:col-span-3"
+      className="tarjeta p-5 sm:p-7 lg:col-span-3 lg:row-span-2"
     >
       <h2 id="titulo-libre" className="text-[12px] font-semibold tracking-[0.12em] text-tinta-3 uppercase">
         {enRojo ? "Este mes no alcanza" : "Libre este mes"}
@@ -219,6 +220,13 @@ export function VistaHoy({ resumen: r }: { resumen: Resumen }) {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
         <Protagonista r={r} />
+
+        <CuentasHoy
+          cuentas={r.cuentas}
+          sobranteAnterior={r.sobranteAnterior}
+          mesesAnteriores={r.mesesAnteriores}
+          className="lg:col-span-2"
+        />
 
         <Tarjeta
           titulo="Pagos fijos del mes"

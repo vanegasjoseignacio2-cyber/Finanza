@@ -1,6 +1,18 @@
 "use client";
 
-import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, CreditCard, HandCoins, Link2, PiggyBank, Trash2 } from "lucide-react";
+import {
+  ArrowDownLeft,
+  ArrowLeftRight,
+  ArrowUpRight,
+  Banknote,
+  CreditCard,
+  HandCoins,
+  Landmark,
+  Link2,
+  type LucideIcon,
+  PiggyBank,
+  Trash2,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
   createContext,
@@ -25,7 +37,7 @@ import { peticion } from "@/lib/cliente";
 import { pesos } from "@/lib/dinero";
 import { fechaCorta, fechaLarga, hoyISO, nombreMes } from "@/lib/fechas";
 import { calendarioCuotas, primeraCuotaPorDefecto, repartirCuotas } from "@/lib/finanzas";
-import type { Movimiento, TipoMovimiento } from "@/lib/types";
+import type { Movimiento, TipoCuenta, TipoMovimiento } from "@/lib/types";
 
 /** Lo que se precarga al abrir: vacío (nuevo), un movimiento (editar) o una copia (repetir). */
 export interface Borrador {
@@ -172,6 +184,14 @@ const TIPOS: Opcion<TipoMovimiento>[] = [
   { valor: "transferencia", etiqueta: "Transferir", icono: ArrowLeftRight },
 ];
 
+// Cada cuenta lleva el icono de su tipo: así el selector de cuentas se dibuja igual que el de arriba (iconos, una sola fila).
+const ICONO_CUENTA: Record<TipoCuenta, LucideIcon> = {
+  corriente: Landmark,
+  efectivo: Banknote,
+  ahorro: PiggyBank,
+  tarjeta: CreditCard,
+};
+
 const AYUDA_TIPO: Record<TipoMovimiento, string> = {
   gasto: "Sale plata de una de tus cuentas.",
   ingreso: "Entra plata. El sueldo registrado reemplaza al esperado del mes.",
@@ -208,6 +228,7 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
   const [ultimo] = useState<Ultimo>(() => (editando || borrador.tipo ? {} : leerUltimo()));
   const cuentasActivas = cuentas.filter((c) => !c.archivada);
   const metasActivas = metas.filter((m) => !m.archivada);
+  const opcionesCuenta: Opcion<string>[] = cuentasActivas.map((c) => ({ valor: c.id, etiqueta: c.nombre, icono: ICONO_CUENTA[c.tipo] }));
 
   const [tipo, setTipo] = useState<TipoMovimiento>(borrador.tipo ?? ultimo.tipo ?? "gasto");
   const [categoria, setCategoria] = useState<string>(
@@ -465,40 +486,26 @@ export function FormularioMovimiento({ borrador, onListo }: { borrador: Borrador
 
       {tipo === "transferencia" ? (
         cuentasActivas.length >= 2 && (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Selector etiqueta="Desde" value={cuentaId} onChange={(e) => setCuentaId(e.target.value)}>
-              {cuentasActivas.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nombre}
-                </option>
-              ))}
-            </Selector>
-            <Selector
+          <div className="flex flex-col gap-4">
+            <Segmentado etiqueta="Desde" opciones={opcionesCuenta} valor={cuentaId} onCambio={setCuentaId} columnas="grid-cols-2" />
+            <Segmentado
               etiqueta="Hacia"
-              value={cuentaDestinoId}
-              onChange={(e) => setCuentaDestinoId(e.target.value)}
-            >
-              {cuentasActivas.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nombre}
-                </option>
-              ))}
-            </Selector>
+              opciones={opcionesCuenta}
+              valor={cuentaDestinoId}
+              onCambio={setCuentaDestinoId}
+              columnas="grid-cols-2"
+            />
           </div>
         )
       ) : (
         cuentasActivas.length > 1 && (
-          <Selector
+          <Segmentado
             etiqueta={tipo === "ingreso" || tipo === "retiro" ? "Entra a" : "Sale de"}
-            value={cuentaId}
-            onChange={(e) => setCuentaId(e.target.value)}
-          >
-            {cuentasActivas.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nombre}
-              </option>
-            ))}
-          </Selector>
+            opciones={opcionesCuenta}
+            valor={cuentaId}
+            onCambio={setCuentaId}
+            columnas="grid-cols-2"
+          />
         )
       )}
 
