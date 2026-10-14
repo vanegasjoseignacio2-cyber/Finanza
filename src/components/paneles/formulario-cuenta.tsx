@@ -360,7 +360,7 @@ export function BotonEliminarCuenta({
             : "Se borra la cuenta con sus gastos e ingresos. Las transferencias hacia o desde otras cuentas se conservan para que sus saldos no cambien. No se puede deshacer; si solo quieres ocultarla, archívala."
         }
         accion={esTarjeta ? "Eliminar tarjeta" : "Eliminar cuenta"}
-        palabra="eliminar"
+        palabra="Eliminar"
         onConfirmar={async () => {
           await ejecutar(
             `eliminar-${cuenta.id}`,
