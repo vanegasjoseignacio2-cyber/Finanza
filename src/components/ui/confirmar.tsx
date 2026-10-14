@@ -25,17 +25,24 @@ export function Confirmar({
   descripcion: string;
   accion?: string;
   icono?: ReactNode;
-  /** Si se indica, hay que escribirla (sin importar mayúsculas) para habilitar la acción. */
+  /** Si se indica, hay que escribirla exactamente (con sus mayúsculas) para habilitar la acción. */
   palabra?: string;
   onConfirmar: () => Promise<unknown> | void;
   onCerrar: () => void;
 }) {
   const [cargando, setCargando] = useState(false);
   const [escrito, setEscrito] = useState("");
-  const habilitado = !palabra || escrito.trim().toLowerCase() === palabra.toLowerCase();
-  // Aviso en vivo: lo escrito hasta ahora tiene que ser el comienzo de la palabra.
-  const parcial = escrito.trim().toLowerCase();
-  const equivocado = Boolean(palabra) && parcial !== "" && !palabra!.toLowerCase().startsWith(parcial);
+  // La palabra se compara tal cual, respetando mayúsculas y minúsculas (solo se
+  // ignoran los espacios de los bordes, que no se ven).
+  const escritoLimpio = escrito.trim();
+  const habilitado = !palabra || escritoLimpio === palabra;
+  // Aviso en vivo: lo escrito hasta ahora tiene que ser el comienzo exacto de la palabra.
+  let aviso: string | undefined;
+  if (palabra && escritoLimpio !== "" && !palabra.startsWith(escritoLimpio)) {
+    aviso = palabra.toLowerCase().startsWith(escritoLimpio.toLowerCase())
+      ? `Respeta las mayúsculas y minúsculas: escribe «${palabra}» tal cual.`
+      : `No coincide: escribe «${palabra}» letra por letra.`;
+  }
 
   function cerrar() {
     setEscrito("");
@@ -69,7 +76,7 @@ export function Confirmar({
             autoCorrect="off"
             spellCheck={false}
             placeholder={palabra}
-            error={equivocado ? `No coincide: escribe «${palabra}» letra por letra.` : undefined}
+            error={aviso}
             ayuda={habilitado ? "Listo, ya puedes confirmar." : undefined}
           />
         )}
