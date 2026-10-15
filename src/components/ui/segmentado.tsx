@@ -68,7 +68,7 @@ export function Segmentado<T extends string>({
               className={`relative cursor-pointer rounded-lg font-medium transition-colors ${
                 conIconos
                   ? "flex min-h-[3.25rem] min-w-0 flex-col items-center justify-center gap-1 px-1 text-[11.5px] leading-none tracking-tight whitespace-nowrap sm:text-[12.5px]"
-                  : "min-h-11 px-2 text-[13px]"
+                  : "min-h-11 px-1 text-[13px] whitespace-nowrap"
               } ${activo ? "text-[#04121c]" : "text-tinta-3 hover:text-tinta-2"}`}
             >
               {/* El fondo se rellena desde el centro hacia las esquinas. */}

@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  BarChart3,
   CalendarDays,
   ChevronsLeft,
   Home,
@@ -26,7 +27,8 @@ const ENLACES = [
 ] as const;
 
 // Solo en el menú de escritorio: en el de abajo del móvil no cabe un quinto
-// enlace junto al botón central de "Nuevo movimiento".
+// enlace junto al botón central de "Nuevo movimiento". En el celular van arriba.
+const ENLACE_INFORME = { href: "/informe", etiqueta: "Informe", Icono: BarChart3 } as const;
 const ENLACE_CALENDARIO = { href: "/calendario", etiqueta: "Calendario", Icono: CalendarDays } as const;
 
 function esActivo(pathname: string, href: string): boolean {
@@ -116,7 +118,7 @@ export function BarraLateral() {
   const pathname = usePathname();
   const captura = useCaptura();
   const { colapsado, alternar } = useMenu();
-  const enlaces = [...ENLACES, ENLACE_CALENDARIO, { href: "/ajustes", etiqueta: "Ajustes", Icono: Settings }];
+  const enlaces = [...ENLACES, ENLACE_INFORME, ENLACE_CALENDARIO, { href: "/ajustes", etiqueta: "Ajustes", Icono: Settings }];
 
   return (
     <motion.aside
@@ -240,12 +242,23 @@ export function BarraSuperiorMovil() {
   const pathname = usePathname();
   const enAjustes = pathname.startsWith("/ajustes");
   const enCalendario = pathname.startsWith("/calendario");
+  const enInforme = pathname.startsWith("/informe");
   return (
     <header className="sticky top-0 z-40 flex items-center justify-between border-b border-borde-suave bg-fondo/90 px-4 py-2.5 backdrop-blur-xl lg:hidden">
       <Link href="/" aria-label="Ir a Hoy" className="flex min-h-11 items-center">
         <Marca />
       </Link>
       <div className="flex items-center gap-1">
+        <Link
+          href="/informe"
+          aria-current={enInforme ? "page" : undefined}
+          aria-label="Informe de gastos"
+          className={`area-toque grid size-11 place-items-center rounded-xl transition-colors ${
+            enInforme ? "text-acento" : "text-tinta-3 hover:text-tinta"
+          }`}
+        >
+          <BarChart3 className="size-4.5" aria-hidden="true" />
+        </Link>
         <Link
           href="/calendario"
           aria-current={enCalendario ? "page" : undefined}

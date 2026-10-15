@@ -27,6 +27,13 @@ import {
   type SumaAgrupada,
   type SumaTarjetaMes,
 } from "./finanzas";
+import {
+  calcularInforme,
+  rangoAnteriorDelInforme,
+  rangoDelInforme,
+  type Informe,
+  type PeriodoInforme,
+} from "./informe";
 import type {
   CuotaProxima,
   Ajustes,
@@ -931,6 +938,37 @@ export async function serieMensual(desde: string, hasta: string): Promise<FilaMe
     ])
     .toArray();
   return filas.map((f) => ({ ...f._id, total: f.total }));
+}
+
+/** Todos los gastos de los meses `desde`..`hasta` (YYYY-MM); sin `desde`, desde el principio. */
+async function listarGastosEntre(desde: string | null, hasta: string): Promise<Movimiento[]> {
+  const principal = idPrincipal();
+  const docs = await (await colecciones.movimientos())
+    .find({ tipo: "gasto", mes: desde ? { $gte: desde, $lte: hasta } : { $lte: hasta } })
+    .sort({ fecha: -1, creadoEn: -1 })
+    .limit(20_000)
+    .toArray();
+  const principalId = await principal;
+  return docs.map((d) => aMovimiento(d, principalId));
+}
+
+/** Los gastos de un periodo que termina en el mes `hasta` y los del periodo anterior equivalente. */
+export async function leerGastosInforme(
+  periodo: PeriodoInforme,
+  hasta: string,
+): Promise<{ desde: string | null; gastos: Movimiento[]; anteriores?: Movimiento[] }> {
+  const { desde } = rangoDelInforme(periodo, hasta);
+  const previo = rangoAnteriorDelInforme(periodo, desde);
+  const [gastos, anteriores] = await Promise.all([
+    listarGastosEntre(desde, hasta),
+    previo ? listarGastosEntre(previo.desde, previo.hasta) : Promise.resolve(undefined),
+  ]);
+  return { desde, gastos, anteriores };
+}
+
+/** El informe de gastos de un periodo que termina en el mes `hasta`, con su comparación. */
+export async function calcularInformeGastos(periodo: PeriodoInforme, hasta: string): Promise<Informe> {
+  return calcularInforme({ ...(await leerGastosInforme(periodo, hasta)), hasta, hoy: hoyISO() });
 }
 
 /** Lo que se paga en cuotas de tarjeta en los meses posteriores a `mes`. */
